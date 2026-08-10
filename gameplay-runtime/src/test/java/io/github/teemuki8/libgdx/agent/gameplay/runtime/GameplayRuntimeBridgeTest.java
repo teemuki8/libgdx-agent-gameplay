@@ -11,6 +11,7 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform2D;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnosticCode;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.DamageApplied;
+import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionStarted;
 import io.github.teemuki8.libgdx.agent.gameplay.core.system.GameSystem;
 import io.github.teemuki8.libgdx.agent.gameplay.core.system.SystemContext;
 import io.github.teemuki8.libgdx.agent.gameplay.core.system.SystemDescriptor;
@@ -127,6 +128,50 @@ final class GameplayRuntimeBridgeTest {
                             "health.current"::equals).isPresent())
                     .findFirst().orElseThrow();
             assertEquals(ChangeCause.Kind.EVENT, healthChange.cause().kind());
+        }
+        runtime.close();
+    }
+
+    @Test
+    void collisionEventRetainsBothRuntimeEndpointsAndFixtureIds() {
+        AgentRuntime runtime = AgentRuntime.builder().build();
+        try (GameplayRuntimeBridge bridge = new GameplayRuntimeBridge(
+                runtime, StandardRuntimeProjections.registry(), GameplayLimits.defaults())) {
+            GameWorld.Builder builder = GameWorld.builder(
+                            GameplayLimits.defaults(), StandardComponents.registry())
+                    .initializer(sink -> {
+                        sink.spawn(EntityDraft.builder(EntityId.of("alpha"))
+                                .with(Health.TYPE, new Health(1, 1)).build());
+                        sink.spawn(EntityDraft.builder(EntityId.of("beta"))
+                                .with(Health.TYPE, new Health(1, 1)).build());
+                    })
+                    .system(new GameSystem() {
+                        @Override public SystemDescriptor descriptor() {
+                            return new SystemDescriptor(SystemId.of("emit-collision"),
+                                    SystemPhase.POST_PHYSICS, 20);
+                        }
+
+                        @Override public void update(SystemContext context) {
+                            context.emit(new CollisionStarted(
+                                    EntityId.of("alpha"), EntityId.of("beta"),
+                                    "alpha.collider", "beta.collider"));
+                        }
+                    });
+            bridge.systems().forEach(builder::system);
+            builder.system(visualPreparation(bridge));
+            runtime.start();
+            try (GameWorld world = builder.build()) {
+                world.step();
+            }
+
+            var event = runtime.latestFrame().orElseThrow().events().stream()
+                    .filter(candidate -> candidate.type().value()
+                            .equals("gameplay.collision-started"))
+                    .findFirst().orElseThrow();
+            assertEquals("gameplay.entity.alpha", event.subject().orElseThrow().value());
+            assertEquals("gameplay.entity.beta", event.source().orElseThrow().value());
+            assertEquals(List.of("firstFixtureId", "secondFixtureId"),
+                    event.attributes().stream().map(RuntimeValue.Field::name).toList());
         }
         runtime.close();
     }

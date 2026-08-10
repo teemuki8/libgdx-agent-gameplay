@@ -6,6 +6,8 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.component.ComponentType;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnosticCode;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.DamageApplied;
+import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionEnded;
+import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionStarted;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EntityDespawned;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EntityKilled;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EntitySpawned;
@@ -322,12 +324,33 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
                     .subject(runtimeEntityId("gameplay.entity." + objective.subject().value()))
                     .attribute("objectiveId", RuntimeValues.string(objective.objectiveId()));
         }
+        if (event instanceof CollisionStarted collision) {
+            return collisionSpec("gameplay.collision-started", collision.first(),
+                    collision.second(), collision.firstFixtureId(), collision.secondFixtureId());
+        }
+        if (event instanceof CollisionEnded collision) {
+            return collisionSpec("gameplay.collision-ended", collision.first(),
+                    collision.second(), collision.firstFixtureId(), collision.secondFixtureId());
+        }
         throw GameplayException.validation(
                 GameplayDiagnosticCode.UNKNOWN_RUNTIME_PROJECTION,
                 "project-gameplay-event",
                 "standard gameplay event",
                 event.getClass().getName(),
                 "Register only the closed V1 event vocabulary.");
+    }
+
+    private static EventSpec collisionSpec(
+            String type,
+            io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId first,
+            io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId second,
+            String firstFixture,
+            String secondFixture) {
+        return EventSpec.type(type)
+                .subject(runtimeEntityId("gameplay.entity." + first.value()))
+                .source(runtimeEntityId("gameplay.entity." + second.value()))
+                .attribute("firstFixtureId", RuntimeValues.string(firstFixture))
+                .attribute("secondFixtureId", RuntimeValues.string(secondFixture));
     }
 
     private static RuntimeValue runtimeValue(EventAttributeValue value) {

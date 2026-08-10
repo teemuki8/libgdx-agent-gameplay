@@ -15,6 +15,8 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform2D;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnosticCode;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.DamageApplied;
+import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionEnded;
+import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionStarted;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EntityDespawned;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EntityKilled;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EntitySpawned;
@@ -212,9 +214,25 @@ public final class CanonicalWorldEncoder {
             writer.text("objective-completed");
             writer.text(objective.subject().value());
             writer.text(objective.objectiveId());
+        } else if (event instanceof CollisionStarted collision) {
+            writer.text("collision-started");
+            collision(writer, collision.first().value(), collision.second().value(),
+                    collision.firstFixtureId(), collision.secondFixtureId());
+        } else if (event instanceof CollisionEnded collision) {
+            writer.text("collision-ended");
+            collision(writer, collision.first().value(), collision.second().value(),
+                    collision.firstFixtureId(), collision.secondFixtureId());
         } else {
             throw unsupported("standard canonical event", event.getClass().getName());
         }
+    }
+
+    private static void collision(
+            Writer writer, String first, String second, String firstFixture, String secondFixture) {
+        writer.text(first);
+        writer.text(second);
+        writer.text(firstFixture);
+        writer.text(secondFixture);
     }
 
     private static void encodeAttribute(Writer writer, EventAttributeValue value) {

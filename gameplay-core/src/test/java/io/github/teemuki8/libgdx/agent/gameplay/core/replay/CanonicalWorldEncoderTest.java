@@ -11,6 +11,8 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform2D;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnosticCode;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EntitySpawned;
+import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionEnded;
+import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionStarted;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EventAttributeValue;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EventAttributes;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EventEnvelope;
@@ -79,6 +81,22 @@ final class CanonicalWorldEncoderTest {
         assertEquals(
                 CanonicalWorldEncoder.defaults().digestEvents(5, List.of(zero, one)),
                 CanonicalWorldEncoder.defaults().digestEvents(5, List.of(one, zero)));
+    }
+
+    @Test
+    void collisionPhaseAndStableFixtureEndpointsAffectTheEventDigest() {
+        EntityId alpha = EntityId.of("alpha");
+        EntityId beta = EntityId.of("beta");
+        EventEnvelope started = new EventEnvelope(4, 0,
+                new CollisionStarted(alpha, beta, "alpha.collider", "beta.collider"),
+                EventAttributes.empty());
+        EventEnvelope ended = new EventEnvelope(4, 0,
+                new CollisionEnded(alpha, beta, "alpha.collider", "beta.collider"),
+                EventAttributes.empty());
+
+        assertNotEquals(
+                CanonicalWorldEncoder.defaults().digestEvents(4, List.of(started)),
+                CanonicalWorldEncoder.defaults().digestEvents(4, List.of(ended)));
     }
 
     private static WorldSnapshot snapshot(Transform2D transform) {
