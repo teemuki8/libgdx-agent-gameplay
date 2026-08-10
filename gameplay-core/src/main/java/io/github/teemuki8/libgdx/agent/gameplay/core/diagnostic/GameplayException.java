@@ -1,6 +1,7 @@
 package io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic;
 
 import java.io.Serial;
+import java.util.Map;
 import java.util.Objects;
 
 /** Exception carrying bounded typed diagnostic evidence. */
@@ -35,6 +36,18 @@ public final class GameplayException extends IllegalArgumentException {
             String correction) {
         return new GameplayException(
                 GameplayDiagnostic.simple(code, operation, expected, observed, correction));
+    }
+
+    /** Creates a validation failure with deterministic location evidence. */
+    public static GameplayException located(
+            GameplayDiagnosticCode code,
+            String operation,
+            Map<String, String> location,
+            String expected,
+            String observed,
+            String correction) {
+        return new GameplayException(new GameplayDiagnostic(
+                code, false, operation, location, expected, observed, correction, null));
     }
 
     private static String messageFor(GameplayDiagnostic diagnostic) {
