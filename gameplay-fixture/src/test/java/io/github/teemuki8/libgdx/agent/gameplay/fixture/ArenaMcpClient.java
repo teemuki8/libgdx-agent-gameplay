@@ -83,21 +83,29 @@ final class ArenaMcpClient implements Closeable {
     }
 
     JsonNode waitForText(Map<String, Object> locator, String expected) throws Exception {
-        JsonNode latest = null;
-        for (int attempt = 0; attempt < 360; attempt++) {
-            latest = tool("ui_assert", Map.of(
-                    "sessionId", ArenaHarness.SESSION_ID,
-                    "schemaVersion", 1,
-                    "locator", locator,
-                    "assertion", Map.of(
-                            "kind", "text-equals", "expected", expected),
-                    "deadlineMillis", 5_000));
-            if ("passed".equals(latest.path("outcome").asText())) {
-                return latest;
-            }
+        tool("ui_wait", Map.of(
+                "sessionId", ArenaHarness.SESSION_ID,
+                "locator", Map.of(
+                        "kind", "filter",
+                        "locator", locator,
+                        "filter", Map.of(
+                                "kind", "has-text",
+                                "match", Map.of(
+                                        "mode", "exact", "source", expected))),
+                "condition", "present",
+                "deadlineMillis", 5_000));
+        JsonNode result = tool("ui_assert", Map.of(
+                "sessionId", ArenaHarness.SESSION_ID,
+                "schemaVersion", 1,
+                "locator", locator,
+                "assertion", Map.of(
+                        "kind", "text-equals", "expected", expected),
+                "deadlineMillis", 5_000));
+        if (!"passed".equals(result.path("outcome").asText())) {
+            throw new IllegalStateException(
+                    "text did not become " + expected + ": " + result);
         }
-        throw new IllegalStateException(
-                "text did not become " + expected + ": " + latest);
+        return result;
     }
 
     JsonNode runtimeCompare(Map<String, Object> locator) throws Exception {

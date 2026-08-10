@@ -128,10 +128,10 @@ final class Box2dContactCollectorTest {
 
         try (GameWorld world = builder.build()) {
             world.step();
-            var alpha = bridge.body(
+            var alpha = bridge.handle(
                     io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId.of("alpha"))
                     .orElseThrow().body();
-            var beta = bridge.body(
+            var beta = bridge.handle(
                     io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId.of("beta"))
                     .orElseThrow().body();
             alpha.setLinearVelocity(2, 0);

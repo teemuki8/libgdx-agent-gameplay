@@ -11,6 +11,11 @@ applies movement intent in `PRE_PHYSICS`, steps the native world in `PHYSICS`, a
 position/velocity authority back in `POST_PHYSICS`. Contact callbacks enqueue stable fixture
 endpoints; gameplay consumes the bounded event list after the step.
 
+Native `Body` and `Fixture` identities never leave the bridge. Use `bodyState(entityId)` for an
+immutable copied position, velocity, collider declaration, stable IDs, and active state. Narrow
+semantic transitions such as `stop` and `deactivate` remain owner-thread checked bridge operations;
+controller intent still enters only through ordered commands.
+
 Install `bridge.contactListener()` or `bridge.composeContactListener(applicationListener)` on the
 world. Do not replace it later without equivalent explicit composition. The evidence listener runs
 first so application callback failure cannot erase inspection evidence.

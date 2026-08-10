@@ -1,7 +1,7 @@
 # libGDX Agent Gameplay V1 Design
 
-Date: 2026-08-10  
-Status: approved for specification  
+Date: 2026-08-10
+Status: approved for specification
 Repository: `teemuki8/libgdx-agent-gameplay` (public)
 
 ## Purpose

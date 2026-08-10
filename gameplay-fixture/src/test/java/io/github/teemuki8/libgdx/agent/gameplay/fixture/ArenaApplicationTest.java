@@ -44,8 +44,8 @@ final class ArenaApplicationTest {
                 equal.set(comparator.compare(arena.harness().session().snapshot(
                                 arena.revision(), arena.frame()),
                         Locator.testId("score-value"), new StrictResolution()).status());
-                arena.setDisplayedScoreOverrideForTest(999L);
-                arena.render();
+                ((com.badlogic.gdx.scenes.scene2d.ui.Label) arena.stage().getRoot()
+                        .findActor("score-value")).setText("999");
                 mismatch.set(comparator.compare(arena.harness().session().snapshot(
                                 arena.revision(), arena.frame()),
                         Locator.testId("score-value"), new StrictResolution()).status());

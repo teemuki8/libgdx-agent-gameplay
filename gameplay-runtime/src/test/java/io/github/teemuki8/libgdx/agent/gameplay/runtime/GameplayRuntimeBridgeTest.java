@@ -28,9 +28,24 @@ import io.github.teemuki8.libgdx.agent.runtime.core.EntitySnapshot;
 import io.github.teemuki8.libgdx.agent.runtime.core.RuntimeStatus;
 import io.github.teemuki8.libgdx.agent.runtime.core.RuntimeValue;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.Test;
 
 final class GameplayRuntimeBridgeTest {
+    @Test
+    void rejectsBridgeAccessFromAThreadOtherThanItsOwner() {
+        AgentRuntime runtime = AgentRuntime.builder().build();
+        try (GameplayRuntimeBridge bridge = new GameplayRuntimeBridge(
+                runtime, StandardRuntimeProjections.registry(), GameplayLimits.defaults())) {
+            CompletionException wrapper = assertThrows(CompletionException.class,
+                    () -> CompletableFuture.runAsync(bridge::systems).join());
+            GameplayException failure = (GameplayException) wrapper.getCause();
+            assertEquals(GameplayDiagnosticCode.OWNER_THREAD_VIOLATION, failure.code());
+        }
+        runtime.close();
+    }
+
     @Test
     void projectsDomainAndUnavailableVisualValuesUnderOneFrameToken() {
         AgentRuntime runtime = AgentRuntime.builder().build();

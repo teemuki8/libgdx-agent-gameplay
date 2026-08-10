@@ -13,6 +13,7 @@ public final class FixedStepLoop {
 
     private final long stepNanos;
     private final int maxCatchUpTicks;
+    private final Thread ownerThread;
     private long retainedNanos;
     private long lastPollNanos;
     private boolean polled;
@@ -32,10 +33,12 @@ public final class FixedStepLoop {
                     stepNanos + ":" + maxCatchUpTicks);
         }
         this.maxCatchUpTicks = maxCatchUpTicks;
+        ownerThread = Thread.currentThread();
     }
 
     /** Polls {@link System#nanoTime()} and advances due fixed ticks. */
     public int poll(Runnable fixedTick) {
+        requireOwner("poll-fixed-step-loop");
         long now = System.nanoTime();
         if (!polled) {
             polled = true;
@@ -49,6 +52,7 @@ public final class FixedStepLoop {
 
     /** Adds one measured render duration, runs due ticks, and retains the remainder. */
     public int advance(Duration elapsed, Runnable fixedTick) {
+        requireOwner("advance-fixed-step-loop");
         Objects.requireNonNull(elapsed, "elapsed");
         Objects.requireNonNull(fixedTick, "fixedTick");
         long measured;
@@ -90,12 +94,25 @@ public final class FixedStepLoop {
 
     /** Returns whether at least one complete fixed tick remains queued. */
     public boolean hasBacklog() {
+        requireOwner("read-fixed-step-backlog");
         return retainedNanos >= stepNanos;
     }
 
     /** Returns interpolation alpha for presentation only. */
     public double interpolationAlpha() {
+        requireOwner("read-fixed-step-interpolation");
         return Math.min(1.0, (double) retainedNanos / stepNanos);
+    }
+
+    private void requireOwner(String operation) {
+        if (Thread.currentThread() != ownerThread) {
+            throw GameplayException.validation(
+                    GameplayDiagnosticCode.OWNER_THREAD_VIOLATION,
+                    operation,
+                    "owner thread " + ownerThread.getName(),
+                    Thread.currentThread().getName(),
+                    "Advance and inspect the loop on its libGDX render-thread owner.");
+        }
     }
 
     private static GameplayException invalid(String expected, String observed) {

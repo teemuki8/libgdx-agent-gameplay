@@ -109,4 +109,12 @@ public final class ArenaGameState {
         enemyKillingSource = null;
         playerKilled = false;
     }
+
+    /** Returns the immutable value copied into each completed gameplay snapshot. */
+    public ArenaStateComponent snapshot() {
+        return new ArenaStateComponent(
+                screen, aimDirection, nextFireTick, score, enemyKilled, enemyDeathTick,
+                enemyKillingSource == null ? "none" : enemyKillingSource.value(),
+                playerKilled);
+    }
 }

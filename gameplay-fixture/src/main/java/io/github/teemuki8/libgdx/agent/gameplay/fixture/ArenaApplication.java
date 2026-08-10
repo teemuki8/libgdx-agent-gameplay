@@ -39,7 +39,6 @@ import io.github.teemuki8.libgdx.agent.gameplay.libgdx.FixedStepLoop;
 import io.github.teemuki8.libgdx.agent.gameplay.libgdx.GameplayRenderer;
 import io.github.teemuki8.libgdx.agent.gameplay.libgdx.VisualSnapshotBuilder;
 import io.github.teemuki8.libgdx.agent.gameplay.runtime.GameplayRuntimeBridge;
-import io.github.teemuki8.libgdx.agent.gameplay.runtime.StandardRuntimeProjections;
 import io.github.teemuki8.libgdx.agent.runtime.core.AgentRuntime;
 import io.github.teemuki8.libgdx.agent.runtime.core.SessionId;
 import java.time.Duration;
@@ -83,7 +82,6 @@ public final class ArenaApplication extends ApplicationAdapter {
     private Actor gameOverOverlay;
     private boolean forceTick;
     private int framesLeft;
-    private Long displayedScoreOverride;
 
     /** Creates one launch mode; resources are allocated later on the render thread. */
     public ArenaApplication(boolean mcp, int smokeFrames, String screenshotPath) {
@@ -113,13 +111,14 @@ public final class ArenaApplication extends ApplicationAdapter {
                 .sessionId(SessionId.of(ArenaHarness.SESSION_ID))
                 .build();
         gameplayRuntime = new GameplayRuntimeBridge(
-                runtime, StandardRuntimeProjections.registry(), GameplayLimits.defaults());
+                runtime, ArenaRuntimeProjections.registry(), GameplayLimits.defaults());
         runtimeProjection = new ArenaRuntimeProjection(
-                runtime, state, gameplayRuntime,
+                runtime, gameplayRuntime,
                 new VisualSnapshotBuilder(
                         camera, assets,
                         ArenaWorldFactory.VIEWPORT_WIDTH,
-                        ArenaWorldFactory.VIEWPORT_HEIGHT));
+                        ArenaWorldFactory.VIEWPORT_HEIGHT,
+                        ArenaWorldFactory.UNITS.renderUnitsPerMeter()));
         nativeWorld = new World(new Vector2(), true);
         arena = ArenaWorldFactory.openApplication(
                 state, nativeWorld, runtime, input, gameplayRuntime, runtimeProjection);
@@ -255,11 +254,6 @@ public final class ArenaApplication extends ApplicationAdapter {
         return frame.get();
     }
 
-    void setDisplayedScoreOverrideForTest(Long value) {
-        displayedScoreOverride = value;
-        forceTick = true;
-    }
-
     private void resolveMarkupActors() {
         screenValue = requireActor("screen-value", Label.class);
         healthValue = requireActor("health-value", Label.class);
@@ -312,7 +306,6 @@ public final class ArenaApplication extends ApplicationAdapter {
     }
 
     private void resetArena() {
-        displayedScoreOverride = null;
         arena.close();
         nativeWorld.dispose();
         state.reset();
@@ -328,24 +321,26 @@ public final class ArenaApplication extends ApplicationAdapter {
     }
 
     private void updateHud() {
-        String screen = state.screen().name();
-        String health = Long.toString(arena.world().snapshot()
+        var snapshot = arena.world().snapshot();
+        ArenaStateComponent arenaState = snapshot.entity(ArenaWorldFactory.STATE_ID)
+                .flatMap(entity -> entity.component(ArenaStateComponent.TYPE))
+                .orElseGet(state::snapshot);
+        String screen = arenaState.screen().name();
+        String health = Long.toString(snapshot
                 .entity(ArenaWorldFactory.PLAYER_ID)
                 .flatMap(entity -> entity.component(Health.TYPE))
                 .map(Health::current)
                 .orElse(0L));
-        String enemyHealth = Long.toString(arena.world().snapshot()
+        String enemyHealth = Long.toString(snapshot
                 .entity(ArenaWorldFactory.ENEMY_ID)
                 .flatMap(entity -> entity.component(Health.TYPE))
                 .map(Health::current)
                 .orElse(0L));
-        long displayedScore = displayedScoreOverride == null
-                ? state.score() : displayedScoreOverride;
         boolean changed = setText(screenValue, screen);
         changed |= setText(healthValue, health);
         changed |= setText(enemyHealthValue, enemyHealth);
-        changed |= setText(scoreValue, Long.toString(displayedScore));
-        boolean gameOver = state.screen() == ArenaGameState.Screen.GAME_OVER;
+        changed |= setText(scoreValue, Long.toString(arenaState.score()));
+        boolean gameOver = arenaState.screen() == ArenaGameState.Screen.GAME_OVER;
         if (gameOverOverlay.isVisible() != gameOver) {
             gameOverOverlay.setVisible(gameOver);
             changed = true;

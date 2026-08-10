@@ -63,7 +63,7 @@ final class ArenaDeterminismTest {
             ArenaWorldFactory.ArenaSession arena, JsonNode transcript) {
         int ticks = transcript.path("ticks").intValue();
         var presses = transcript.path("presses");
-        CanonicalWorldEncoder encoder = CanonicalWorldEncoder.defaults();
+        CanonicalWorldEncoder encoder = ArenaWorldFactory.canonicalEncoder();
         List<WorldDigest> worlds = new ArrayList<>();
         List<WorldDigest> events = new ArrayList<>();
         List<WorldSnapshot> snapshots = new ArrayList<>();

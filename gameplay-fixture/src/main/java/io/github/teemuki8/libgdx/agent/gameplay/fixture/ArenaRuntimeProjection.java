@@ -22,7 +22,6 @@ public final class ArenaRuntimeProjection implements GameSystem, AutoCloseable {
     private static final EntityType ARENA_TYPE = EntityType.of("arena-state");
     private static final EntityType ACTOR_TYPE = EntityType.of("arena-actor");
 
-    private final ArenaGameState state;
     private final GameplayRuntimeBridge bridge;
     private final VisualSnapshotBuilder visuals;
     private final List<EntityRegistration> registrations;
@@ -34,20 +33,18 @@ public final class ArenaRuntimeProjection implements GameSystem, AutoCloseable {
     /** Registers stable fixture aliases before the caller starts the runtime. */
     public ArenaRuntimeProjection(
             AgentRuntime runtime,
-            ArenaGameState state,
             GameplayRuntimeBridge bridge,
             VisualSnapshotBuilder visuals) {
         AgentRuntime checkedRuntime = Objects.requireNonNull(runtime, "runtime");
-        this.state = Objects.requireNonNull(state, "state");
         this.bridge = Objects.requireNonNull(bridge, "bridge");
         this.visuals = Objects.requireNonNull(visuals, "visuals");
         EntityRegistration arena = checkedRuntime.entities().register(
                 EntityId.of("gameplay-arena"), ARENA_TYPE, () -> "Arena state",
                 inspector -> {
                     inspector.property("screen",
-                            () -> RuntimeValues.enumValue(this.state.screen().name()));
+                            () -> RuntimeValues.enumValue(arenaState().screen().name()));
                     inspector.property("score",
-                            () -> RuntimeValues.integer(this.state.score()));
+                            () -> RuntimeValues.integer(arenaState().score()));
                 });
         EntityRegistration player = null;
         EntityRegistration enemy = null;
@@ -112,5 +109,11 @@ public final class ArenaRuntimeProjection implements GameSystem, AutoCloseable {
                 .flatMap(entity -> entity.component(Health.TYPE))
                 .map(value -> maximum ? value.max() : value.current())
                 .orElse(0L);
+    }
+
+    private ArenaStateComponent arenaState() {
+        return snapshot.entity(ArenaWorldFactory.STATE_ID)
+                .flatMap(entity -> entity.component(ArenaStateComponent.TYPE))
+                .orElseGet(() -> new ArenaGameState().snapshot());
     }
 }

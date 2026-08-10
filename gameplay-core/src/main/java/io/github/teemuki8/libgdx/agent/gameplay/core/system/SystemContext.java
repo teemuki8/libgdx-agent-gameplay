@@ -32,6 +32,9 @@ public interface SystemContext {
     /** Returns the immutable commands targeted at this tick. */
     List<CommandEnvelope> commands();
 
+    /** Queues ordered controller intent for a future tick from the INPUT phase. */
+    void enqueue(CommandEnvelope command);
+
     /** Returns an immutable snapshot of authoritative state at this exact phase. */
     WorldSnapshot snapshot();
 

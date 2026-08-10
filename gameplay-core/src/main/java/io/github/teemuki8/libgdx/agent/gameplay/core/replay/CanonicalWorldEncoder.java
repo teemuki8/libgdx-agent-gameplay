@@ -5,6 +5,10 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.component.Animation;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.AnimationClip;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Collider;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Component;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.CanonicalComponentWriter;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.ComponentRegistry;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.ComponentType;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.StandardComponents;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Faction;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Health;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Lifetime;
@@ -49,9 +53,15 @@ import java.util.TreeMap;
  */
 public final class CanonicalWorldEncoder {
     private final int maxBytes;
+    private final ComponentRegistry components;
 
     /** Creates an encoder with an application-lowered cap. */
     public CanonicalWorldEncoder(int maxBytes) {
+        this(maxBytes, StandardComponents.registry());
+    }
+
+    /** Creates an encoder with an explicit component-codec registry. */
+    public CanonicalWorldEncoder(int maxBytes, ComponentRegistry components) {
         if (maxBytes < 1 || maxBytes > GameplayLimits.SNAPSHOT_BYTE_MAXIMUM) {
             throw GameplayException.validation(
                     GameplayDiagnosticCode.LIMIT_OUT_OF_RANGE,
@@ -61,6 +71,7 @@ public final class CanonicalWorldEncoder {
                     "Choose a positive cap no greater than the V1 maximum.");
         }
         this.maxBytes = maxBytes;
+        this.components = Objects.requireNonNull(components, "components");
     }
 
     /** Returns an encoder using the fixed 4 MiB V1 cap. */
@@ -82,7 +93,7 @@ public final class CanonicalWorldEncoder {
             writer.integer(entity.components().size());
             entity.components().forEach((type, component) -> {
                 writer.text(type.id());
-                encodeComponent(writer, component);
+                encodeRegistered(writer, type, component);
             });
         }
         return writer.toByteArray();
@@ -130,7 +141,28 @@ public final class CanonicalWorldEncoder {
         return new WorldDigest(tick, sha256(encodeEvents(tick, events)));
     }
 
-    private static void encodeComponent(Writer writer, Component component) {
+    private void encodeRegistered(
+            CanonicalComponentWriter writer,
+            ComponentType<?> type,
+            Component component) {
+        encodeRegisteredTyped(writer, castType(type), component);
+    }
+
+    private <T extends Component> void encodeRegisteredTyped(
+            CanonicalComponentWriter writer,
+            ComponentType<T> type,
+            Component component) {
+        components.encode(type, type.valueClass().cast(component), writer);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T extends Component> ComponentType<T> castType(ComponentType<?> type) {
+        return (ComponentType<T>) type;
+    }
+
+    /** Encodes one immutable standard component in its stable V1 field order. */
+    public static void encodeStandardComponent(
+            CanonicalComponentWriter writer, Component component) {
         if (component instanceof Transform2D transform) {
             vector(writer, transform.position());
             writer.decimal(transform.rotationRadians());
@@ -171,7 +203,8 @@ public final class CanonicalWorldEncoder {
         }
     }
 
-    private static void encodeAnimation(Writer writer, Animation animation) {
+    private static void encodeAnimation(
+            CanonicalComponentWriter writer, Animation animation) {
         Map<String, AnimationClip> clips = new TreeMap<>(animation.clips());
         writer.integer(clips.size());
         clips.forEach((name, clip) -> {
@@ -256,12 +289,12 @@ public final class CanonicalWorldEncoder {
         }
     }
 
-    private static void vector(Writer writer, Vec2 value) {
+    private static void vector(CanonicalComponentWriter writer, Vec2 value) {
         writer.decimal(value.x());
         writer.decimal(value.y());
     }
 
-    private static void color(Writer writer, Rgba value) {
+    private static void color(CanonicalComponentWriter writer, Rgba value) {
         writer.decimal(value.red());
         writer.decimal(value.green());
         writer.decimal(value.blue());
@@ -285,7 +318,7 @@ public final class CanonicalWorldEncoder {
                 "Register and encode only the closed V1 canonical vocabulary.");
     }
 
-    private static final class Writer {
+    private static final class Writer implements CanonicalComponentWriter {
         private final int limit;
         private final ByteArrayOutputStream output = new ByteArrayOutputStream();
 
@@ -293,11 +326,11 @@ public final class CanonicalWorldEncoder {
             this.limit = limit;
         }
 
-        private void bool(boolean value) {
+        @Override public void bool(boolean value) {
             octet(value ? 1 : 0);
         }
 
-        private void decimal(double value) {
+        @Override public void decimal(double value) {
             if (!Double.isFinite(value)) {
                 throw unsupported("finite canonical decimal", Double.toString(value));
             }
@@ -305,14 +338,14 @@ public final class CanonicalWorldEncoder {
             longValue(Double.doubleToLongBits(normalized));
         }
 
-        private void integer(int value) {
+        @Override public void integer(int value) {
             ensure(Integer.BYTES);
             for (int shift = 24; shift >= 0; shift -= 8) {
                 output.write(value >>> shift & 0xff);
             }
         }
 
-        private void longValue(long value) {
+        @Override public void longValue(long value) {
             ensure(Long.BYTES);
             for (int shift = 56; shift >= 0; shift -= 8) {
                 output.write((int) (value >>> shift & 0xff));
@@ -324,7 +357,7 @@ public final class CanonicalWorldEncoder {
             output.write(value);
         }
 
-        private void text(String value) {
+        @Override public void text(String value) {
             byte[] utf8 = Objects.requireNonNull(value, "canonical text")
                     .getBytes(StandardCharsets.UTF_8);
             integer(utf8.length);

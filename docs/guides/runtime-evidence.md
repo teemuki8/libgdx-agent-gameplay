@@ -8,8 +8,11 @@ the bridge complete capture in `RUNTIME_CAPTURE`.
 Standard runtime IDs are deterministic: `gameplay.frame`, `gameplay.entity.<entity-id>`, and
 `gameplay.visual.<entity-id>`. Properties include the fixed tick/frame token, lifecycle,
 component projections, asset/region, world and screen bounds, pivot, visibility, camera visibility,
-render layer, and render order. Damage/death changes retain event attribution when the event maps
-unambiguously to one property change.
+render layer/order, copied collider bounds, the declared unit conversion, and visual/collider
+center-alignment delta. Missing collider evidence is a typed null value rather than inferred native
+state. Custom state becomes runtime authority only through an explicit `RuntimeProjection` over a
+component already copied into the completed world snapshot. Damage/death changes retain event
+attribution when the event maps unambiguously to one property change.
 
 The bridge owns only its dynamic runtime source registration. The application owns and closes the
 runtime. Close application-specific registrations, the gameplay bridge, then the runtime, all on

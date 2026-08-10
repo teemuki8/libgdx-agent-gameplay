@@ -31,14 +31,15 @@ intent, not claims inferred from third-party footage or assets.
 |---|---|---|---|---|
 | Player velocity intent | Authored | WASD to `MoveCommand` | normalized direction, max 96 units/s in `PRE_PHYSICS` | command stream then native body velocity |
 | Player translation/collision | Simulated | resulting Box2D velocity/contact | one 60 Hz step, 6 velocity and 2 position iterations | Box2D body copied out in `POST_PHYSICS` |
-| Enemy pursuit intent | Authored simulation system | current player/enemy positions | max 48 units/s before physics | enemy native body velocity |
+| Enemy pursuit intent | Authored simulation system | tick-targeted AI `MoveCommand` from current player/enemy positions | max 48 units/s through the next tick's `PRE_PHYSICS` command consumer | ordered command then enemy native body velocity |
 | Projectile origin/heading | Authored | Space to `AimCommand` and `FireCommand` | one shot per 12 ticks, max 320 units/s | immutable spawn transform and movement |
 | Projectile translation/contact | Simulated | Box2D body/contact | 180-tick lifetime, bounded callback queue | Box2D body and stable fixture endpoints |
-| Damage/death/score | Authored fixed-tick rules | collision events | one damage per projectile, 3 health, 24-tick death presentation | `Health`, events, and `ArenaGameState` |
+| Damage/death/score | Authored fixed-tick rules | collision events | one damage per projectile, 3 health, 24-tick death presentation | `Health`, events, and immutable `ArenaStateComponent` in each canonical snapshot |
 
 - Fixed-step rate: 60 Hz (`16,666,667` ns).
 - Network-relevant command boundary: tick-targeted keyboard `MoveCommand`, `AimCommand`, and
-  `FireCommand` envelopes from source `keyboard` with monotonic source-local sequence.
+  `FireCommand` envelopes from source `keyboard`, plus pursuit `MoveCommand` envelopes from
+  source `enemy-ai`, each with monotonic source-local sequence.
 - Rendering interpolation or presentation-only behavior: rendering reads completed state; no
   interpolated or sprite value flows back into gameplay.
 
@@ -109,8 +110,9 @@ outputs and the 256x256 packed atlas were opened and inspected at original resol
   `score` each reported `EQUAL` with identical displayed/runtime frame IDs before combat, score
   reported `EQUAL` at 300 after combat, and all original values reported `EQUAL` after reset.
   The application captures one presentation runtime frame for every rendered UI frame without
-  advancing physics, then records the explicit correlation. A rendered-app regression overrides
-  only the displayed score and proves the comparator changes from `EQUAL` to `MISMATCH`.
+  advancing physics, then records the explicit correlation. A rendered-app regression changes
+  only the markup label from test-side render-thread setup and proves the comparator changes from
+  `EQUAL` to `MISMATCH` without a production override path.
 - Markup 0.5.0 identifier constraint: runtime XML identifiers accept only letters, digits,
   hyphens, and underscores, so markup aliases are `gameplay-arena`, `gameplay-player`,
   `gameplay-enemy`, and `health-current`. Standard gameplay runtime entities retain their

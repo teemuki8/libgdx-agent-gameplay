@@ -60,6 +60,7 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
     private final GameplayLimits limits;
     private final EntityRegistration sourceRegistration;
     private final List<GameSystem> systems;
+    private final Thread ownerThread;
     private volatile GameplayRuntimeFrame capturedFrame;
     private WorldVisualSnapshot preparedVisuals;
     private long openTick = -1;
@@ -74,6 +75,7 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         this.projections = Objects.requireNonNull(projections, "projections");
         this.limits = Objects.requireNonNull(limits, "limits");
+        ownerThread = Thread.currentThread();
         try {
             sourceRegistration = runtime.entities().registerSource(
                     SOURCE_NAME, this::runtimeEntities);
@@ -153,6 +155,7 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
 
     /** Returns the last successfully completed gameplay frame token. */
     public Optional<String> lastFrameToken() {
+        requireOpen();
         return Optional.ofNullable(lastFrameToken);
     }
 
@@ -248,6 +251,14 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
             values.put("cameraVisible", RuntimeValues.bool(visual.cameraVisible()));
             values.put("renderLayer", RuntimeValues.enumValue(visual.renderLayer()));
             values.put("renderOrder", RuntimeValues.integer(visual.renderOrder()));
+            values.put("colliderBounds", visual.colliderBounds()
+                    .<RuntimeValue>map(bounds -> bounds(
+                            bounds.minX(), bounds.minY(), bounds.maxX(), bounds.maxY()))
+                    .orElseGet(RuntimeValues::nullValue));
+            values.put("unitConversion", RuntimeValues.decimal(visual.unitConversion()));
+            values.put("alignmentDelta", visual.alignmentDelta()
+                    .<RuntimeValue>map(delta -> vector(delta.x(), delta.y()))
+                    .orElseGet(RuntimeValues::nullValue));
         }
         requirePropertyLimit(values);
         return inspectable("gameplay.visual." + entity.id().value(), VISUAL_TYPE,
@@ -456,6 +467,7 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
     }
 
     private void requireOpen() {
+        requireOwner("use-gameplay-runtime");
         if (closed) {
             throw GameplayException.validation(
                     GameplayDiagnosticCode.RUNTIME_BRIDGE_CLOSED,
@@ -463,6 +475,17 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
                     "open gameplay runtime bridge",
                     "closed",
                     "Install a new bridge before capturing more frames.");
+        }
+    }
+
+    private void requireOwner(String operation) {
+        if (Thread.currentThread() != ownerThread) {
+            throw GameplayException.validation(
+                    GameplayDiagnosticCode.OWNER_THREAD_VIOLATION,
+                    operation,
+                    "owner thread " + ownerThread.getName(),
+                    Thread.currentThread().getName(),
+                    "Run runtime registration and capture on the bridge owner thread.");
         }
     }
 
@@ -475,6 +498,7 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
 
     @Override
     public void close() {
+        requireOwner("close-gameplay-runtime");
         if (closed) {
             return;
         }

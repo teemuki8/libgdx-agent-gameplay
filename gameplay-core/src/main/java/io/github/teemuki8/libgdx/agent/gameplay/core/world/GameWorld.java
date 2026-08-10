@@ -14,6 +14,7 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.event.EventAttributes;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EventBuffer;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EventEnvelope;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.GameplayEvent;
+import io.github.teemuki8.libgdx.agent.gameplay.core.replay.CanonicalWorldEncoder;
 import io.github.teemuki8.libgdx.agent.gameplay.core.system.GameSystem;
 import io.github.teemuki8.libgdx.agent.gameplay.core.system.SystemContext;
 import io.github.teemuki8.libgdx.agent.gameplay.core.system.SystemPhase;
@@ -42,6 +43,7 @@ public final class GameWorld implements AutoCloseable {
     private final Thread ownerThread;
     private final CommandBuffer commandBuffer;
     private final EventBuffer eventBuffer;
+    private final CanonicalWorldEncoder snapshotEncoder;
     private final Map<EntityId, EntityRecord> active = new TreeMap<>();
     private final Map<EntityId, EntityDraft> pendingSpawn = new LinkedHashMap<>();
     private final Set<EntityId> pendingDespawn = new LinkedHashSet<>();
@@ -70,6 +72,8 @@ public final class GameWorld implements AutoCloseable {
         ownerThread = Thread.currentThread();
         commandBuffer = new CommandBuffer(limits);
         eventBuffer = new EventBuffer(limits);
+        snapshotEncoder = new CanonicalWorldEncoder(
+                limits.maxSnapshotBytes(), componentRegistry);
         initializer.initialize(this::spawnInternal);
     }
 
@@ -130,7 +134,10 @@ public final class GameWorld implements AutoCloseable {
                     "despawn-entity", "an active entity", checked.value(),
                     "Resolve a fresh entity view before requesting despawn.");
         }
-        pendingDespawn.add(checked);
+        if (!pendingDespawn.contains(checked)) {
+            requirePendingMutationCapacity("despawn-entity");
+            pendingDespawn.add(checked);
+        }
     }
 
     /** Requests a deterministic reset after the current tick's disposal barrier. */
@@ -303,6 +310,7 @@ public final class GameWorld implements AutoCloseable {
                     "Use the bounded standard component vocabulary.");
         }
         checked.components().forEach((type, value) -> validateComponent(type, value));
+        requirePendingMutationCapacity("spawn-entity");
         pendingSpawn.put(checked.id(), checked);
     }
 
@@ -326,9 +334,22 @@ public final class GameWorld implements AutoCloseable {
     }
 
     private WorldSnapshot snapshotInternal(long snapshotTick) {
-        return new WorldSnapshot(snapshotTick, active.values().stream()
-                .map(EntityRecord::snapshot)
+        WorldSnapshot snapshot = new WorldSnapshot(snapshotTick, active.values().stream()
+                .map(record -> record.snapshot(componentRegistry))
                 .toList());
+        snapshotEncoder.encode(snapshot);
+        return snapshot;
+    }
+
+    private void requirePendingMutationCapacity(String operation) {
+        int pending = Math.addExact(pendingSpawn.size(), pendingDespawn.size());
+        if (pending >= limits.maxPendingMutations()) {
+            throw failure(GameplayDiagnosticCode.PENDING_MUTATION_LIMIT_EXCEEDED,
+                    operation,
+                    "at most " + limits.maxPendingMutations() + " pending mutations",
+                    Integer.toString(pending + 1),
+                    "Advance the activation/removal barrier before queueing more mutations.");
+        }
     }
 
     private void requireOwner(String operation) {
@@ -402,7 +423,7 @@ public final class GameWorld implements AutoCloseable {
         public <T extends Component> void replace(
                 EntityId id, ComponentType<T> type, T value) {
             requireValid();
-            if (phase == SystemPhase.RUNTIME_CAPTURE) {
+            if (phase.compareTo(SystemPhase.ANIMATION) > 0) {
                 throw mutationFailure("replace component");
             }
             validateComponent(type, value);
@@ -420,6 +441,23 @@ public final class GameWorld implements AutoCloseable {
         public List<CommandEnvelope> commands() {
             requireValid();
             return currentCommands;
+        }
+
+        @Override
+        public void enqueue(CommandEnvelope command) {
+            requireValid();
+            if (phase != SystemPhase.INPUT) {
+                throw mutationFailure("enqueue command");
+            }
+            if (Objects.requireNonNull(command, "command").targetTick()
+                    <= GameWorld.this.tick) {
+                throw failure(GameplayDiagnosticCode.LATE_COMMAND,
+                        "enqueue-system-command",
+                        "target tick after " + GameWorld.this.tick,
+                        Long.toString(command.targetTick()),
+                        "System-authored intent becomes consumable on a future tick.");
+            }
+            GameWorld.this.enqueue(command);
         }
 
         @Override
@@ -514,8 +552,31 @@ public final class GameWorld implements AutoCloseable {
             return new EntityView(id, state, components);
         }
 
-        private EntitySnapshot snapshot() {
-            return new EntitySnapshot(id, EntityState.ACTIVE, components);
+        private EntitySnapshot snapshot(ComponentRegistry registry) {
+            Map<ComponentType<?>, Component> copied = new TreeMap<>();
+            components.forEach((type, component) ->
+                    copied.put(type, snapshotComponent(registry, type, component)));
+            return new EntitySnapshot(id, EntityState.ACTIVE, copied);
+        }
+
+        private static <T extends Component> T snapshotTyped(
+                ComponentRegistry registry,
+                ComponentType<T> type,
+                Component component) {
+            return registry.snapshot(type, type.valueClass().cast(component));
+        }
+
+        private static Component snapshotComponent(
+                ComponentRegistry registry,
+                ComponentType<?> type,
+                Component component) {
+            return snapshotTyped(registry, castType(type), component);
+        }
+
+        @SuppressWarnings("unchecked")
+        private static <T extends Component> ComponentType<T> castType(
+                ComponentType<?> type) {
+            return (ComponentType<T>) type;
         }
 
         private <T extends Component> void replace(ComponentType<T> type, T value) {

@@ -131,9 +131,27 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
                 Objects.requireNonNull(applicationListener, "applicationListener"));
     }
 
-    /** Resolves one live bridge-owned body mapping. */
-    public Optional<Box2dBodyHandle> body(EntityId entityId) {
-        requireOwnerOpen("read-box2d-body");
+    /** Returns copied stable state without exposing native Box2D identity. */
+    public Optional<Box2dBodyState> bodyState(EntityId entityId) {
+        requireOwnerOpen("read-box2d-body-state");
+        Box2dBodyHandle handle = bodies.get(Objects.requireNonNull(entityId, "entityId"));
+        return handle == null ? Optional.empty() : Optional.of(handle.state(units));
+    }
+
+    /** Deactivates one mapped body at an authoritative gameplay transition. */
+    public void deactivate(EntityId entityId) {
+        requireOwnerOpen("deactivate-box2d-body");
+        requireHandle(entityId).body().setActive(false);
+    }
+
+    /** Stops one mapped body without exposing its native identity. */
+    public void stop(EntityId entityId) {
+        requireOwnerOpen("stop-box2d-body");
+        requireHandle(entityId).body().setLinearVelocity(0.0f, 0.0f);
+    }
+
+    Optional<Box2dBodyHandle> handle(EntityId entityId) {
+        requireOwnerOpen("read-internal-box2d-handle");
         return Optional.ofNullable(bodies.get(Objects.requireNonNull(entityId, "entityId")));
     }
 
@@ -316,6 +334,17 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
                     "closed bridge",
                     "Create a new bridge rather than reusing a closed adapter.");
         }
+    }
+
+    private Box2dBodyHandle requireHandle(EntityId entityId) {
+        EntityId checked = Objects.requireNonNull(entityId, "entityId");
+        Box2dBodyHandle handle = bodies.get(checked);
+        if (handle == null) {
+            throw failure(GameplayDiagnosticCode.BOX2D_BODY_NOT_FOUND,
+                    "active mapped body", checked.value(),
+                    "Resolve copied body state before requesting a native transition.");
+        }
+        return handle;
     }
 
     private void requireOwner(String operation) {

@@ -4,12 +4,14 @@ import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.math.Vector3;
 import io.github.teemuki8.libgdx.agent.gameplay.core.GameplayLimits;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Animation;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.Collider;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Render;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Sprite;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform2D;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnosticCode;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.Bounds2;
+import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec2;
 import io.github.teemuki8.libgdx.agent.gameplay.core.visual.ScreenBounds;
 import io.github.teemuki8.libgdx.agent.gameplay.core.visual.VisualEvidenceStatus;
 import io.github.teemuki8.libgdx.agent.gameplay.core.visual.WorldVisualEntry;
@@ -28,6 +30,8 @@ public final class VisualSnapshotBuilder {
     private final int framebufferWidth;
     private final int framebufferHeight;
     private final int maxEntries;
+    private final double unitConversion;
+    private final Thread ownerThread;
 
     /** Creates a builder using the fixed V1 visual entry maximum. */
     public VisualSnapshotBuilder(
@@ -36,7 +40,18 @@ public final class VisualSnapshotBuilder {
             int framebufferWidth,
             int framebufferHeight) {
         this(camera, assets, framebufferWidth, framebufferHeight,
-                GameplayLimits.VISUAL_ENTRY_MAXIMUM);
+                GameplayLimits.VISUAL_ENTRY_MAXIMUM, 1.0);
+    }
+
+    /** Creates a builder with an explicit render-units-per-physics-unit conversion. */
+    public VisualSnapshotBuilder(
+            OrthographicCamera camera,
+            AssetResolver assets,
+            int framebufferWidth,
+            int framebufferHeight,
+            double unitConversion) {
+        this(camera, assets, framebufferWidth, framebufferHeight,
+                GameplayLimits.VISUAL_ENTRY_MAXIMUM, unitConversion);
     }
 
     /** Creates a builder with an application-lowered entry bound. */
@@ -46,10 +61,22 @@ public final class VisualSnapshotBuilder {
             int framebufferWidth,
             int framebufferHeight,
             int maxEntries) {
+        this(camera, assets, framebufferWidth, framebufferHeight, maxEntries, 1.0);
+    }
+
+    /** Creates a builder with an application-lowered cap and explicit unit conversion. */
+    public VisualSnapshotBuilder(
+            OrthographicCamera camera,
+            AssetResolver assets,
+            int framebufferWidth,
+            int framebufferHeight,
+            int maxEntries,
+            double unitConversion) {
         this.camera = Objects.requireNonNull(camera, "camera");
         this.assets = Objects.requireNonNull(assets, "assets");
         if (framebufferWidth < 1 || framebufferHeight < 1
-                || maxEntries < 1 || maxEntries > GameplayLimits.VISUAL_ENTRY_MAXIMUM) {
+                || maxEntries < 1 || maxEntries > GameplayLimits.VISUAL_ENTRY_MAXIMUM
+                || !Double.isFinite(unitConversion) || unitConversion <= 0.0) {
             throw GameplayException.validation(
                     GameplayDiagnosticCode.LIMIT_OUT_OF_RANGE,
                     "configure-visual-snapshot",
@@ -61,10 +88,13 @@ public final class VisualSnapshotBuilder {
         this.framebufferWidth = framebufferWidth;
         this.framebufferHeight = framebufferHeight;
         this.maxEntries = maxEntries;
+        this.unitConversion = unitConversion;
+        ownerThread = Thread.currentThread();
     }
 
     /** Captures every drawable entity, retaining typed unavailable evidence. */
     public WorldVisualSnapshot build(WorldSnapshot snapshot) {
+        requireOwner();
         Objects.requireNonNull(snapshot, "snapshot");
         List<EntitySnapshot> entities = GameplayRenderer.orderedEntities(snapshot);
         if (entities.size() > maxEntries) {
@@ -88,6 +118,11 @@ public final class VisualSnapshotBuilder {
         Render render = entity.component(Render.TYPE).orElseThrow();
         Animation animation = entity.component(Animation.TYPE).orElse(null);
         Bounds2 worldBounds = worldBounds(transform, sprite);
+        Optional<Bounds2> colliderBounds = entity.component(Collider.TYPE)
+                .map(collider -> colliderBounds(transform, collider));
+        Optional<Vec2> alignmentDelta = colliderBounds.map(bounds -> new Vec2(
+                centerX(worldBounds) - centerX(bounds),
+                centerY(worldBounds) - centerY(bounds)));
         String region = sprite.region();
         VisualEvidenceStatus status = VisualEvidenceStatus.AVAILABLE;
         try {
@@ -122,7 +157,8 @@ public final class VisualSnapshotBuilder {
         return new WorldVisualEntry(
                 entity.id(), sprite.asset(), region, transform.position(), worldBounds,
                 screenBounds, sprite.origin(), transform.rotationRadians(),
-                render.visible(), cameraVisible, render.layer(), render.order(), status);
+                render.visible(), cameraVisible, render.layer(), render.order(),
+                colliderBounds, unitConversion, alignmentDelta, status);
     }
 
     private ScreenBounds project(Bounds2 bounds) {
@@ -170,5 +206,41 @@ public final class VisualSnapshotBuilder {
             maxY = Math.max(maxY, y);
         }
         return new Bounds2(minX, minY, maxX, maxY);
+    }
+
+    private static Bounds2 colliderBounds(Transform2D transform, Collider collider) {
+        double cosine = Math.cos(transform.rotationRadians());
+        double sine = Math.sin(transform.rotationRadians());
+        double centerX = transform.position().x()
+                + collider.offset().x() * cosine - collider.offset().y() * sine;
+        double centerY = transform.position().y()
+                + collider.offset().x() * sine + collider.offset().y() * cosine;
+        double halfWidth = collider.size().x() * 0.5;
+        double halfHeight = collider.size().y() * 0.5;
+        double extentX = collider.shape() == Collider.Shape.CIRCLE
+                ? halfWidth : halfWidth * Math.abs(cosine) + halfHeight * Math.abs(sine);
+        double extentY = collider.shape() == Collider.Shape.CIRCLE
+                ? halfHeight : halfWidth * Math.abs(sine) + halfHeight * Math.abs(cosine);
+        return new Bounds2(centerX - extentX, centerY - extentY,
+                centerX + extentX, centerY + extentY);
+    }
+
+    private static double centerX(Bounds2 bounds) {
+        return (bounds.minX() + bounds.maxX()) * 0.5;
+    }
+
+    private static double centerY(Bounds2 bounds) {
+        return (bounds.minY() + bounds.maxY()) * 0.5;
+    }
+
+    private void requireOwner() {
+        if (Thread.currentThread() != ownerThread) {
+            throw GameplayException.validation(
+                    GameplayDiagnosticCode.OWNER_THREAD_VIOLATION,
+                    "capture-visual-snapshot",
+                    "owner thread " + ownerThread.getName(),
+                    Thread.currentThread().getName(),
+                    "Capture camera and asset evidence on the libGDX render thread.");
+        }
     }
 }

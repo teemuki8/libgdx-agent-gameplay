@@ -23,6 +23,9 @@ public record WorldVisualEntry(
         boolean cameraVisible,
         String renderLayer,
         int renderOrder,
+        Optional<Bounds2> colliderBounds,
+        double unitConversion,
+        Optional<Vec2> alignmentDelta,
         VisualEvidenceStatus status) implements Comparable<WorldVisualEntry> {
     /** Validates and copies all evidence values. */
     public WorldVisualEntry {
@@ -34,13 +37,16 @@ public record WorldVisualEntry(
         Objects.requireNonNull(screenBounds, "screenBounds");
         Objects.requireNonNull(pivot, "pivot");
         renderLayer = IdentifierRules.requireIdentifier(renderLayer, "visual.renderLayer");
+        Objects.requireNonNull(colliderBounds, "colliderBounds");
+        Objects.requireNonNull(alignmentDelta, "alignmentDelta");
         Objects.requireNonNull(status, "status");
-        if (!Double.isFinite(rotationRadians)) {
+        if (!Double.isFinite(rotationRadians)
+                || !Double.isFinite(unitConversion) || unitConversion <= 0.0) {
             throw GameplayException.validation(
                     GameplayDiagnosticCode.UNPROJECTABLE_BOUNDS,
                     "create-visual-entry",
                     "finite visual rotation",
-                    Double.toString(rotationRadians),
+                    rotationRadians + ":" + unitConversion,
                     "Capture a validated finite transform.");
         }
     }

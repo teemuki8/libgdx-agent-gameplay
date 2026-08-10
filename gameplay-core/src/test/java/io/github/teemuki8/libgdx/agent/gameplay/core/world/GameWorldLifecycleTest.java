@@ -2,11 +2,18 @@ package io.github.teemuki8.libgdx.agent.gameplay.core.world;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.teemuki8.libgdx.agent.gameplay.core.GameplayLimits;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Health;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.Component;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.ComponentCodec;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.ComponentRegistry;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.ComponentType;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.StandardComponents;
+import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnosticCode;
+import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.system.GameSystem;
 import io.github.teemuki8.libgdx.agent.gameplay.core.system.SystemContext;
 import io.github.teemuki8.libgdx.agent.gameplay.core.system.SystemDescriptor;
@@ -113,6 +120,94 @@ final class GameWorldLifecycleTest {
 
         assertEquals(List.of("leaf-b", "leaf-a", "root-b", "root-a"), disposal);
         world.close();
+    }
+
+    @Test
+    void pendingMutationAndSnapshotLimitsAreEnforcedByTheWorld() {
+        GameplayLimits defaults = GameplayLimits.defaults();
+        GameplayLimits oneMutation = new GameplayLimits(
+                defaults.maxEntities(), defaults.maxComponentsPerEntity(),
+                defaults.maxSystems(), defaults.maxQueuedCommands(), 1,
+                defaults.maxEventsPerTick(), defaults.maxVisualEntries(),
+                defaults.maxSnapshotBytes());
+        try (GameWorld world = GameWorld.builder(
+                oneMutation, StandardComponents.registry()).build()) {
+            world.spawn(draft("alpha"));
+            GameplayException mutationFailure = assertThrows(
+                    GameplayException.class, () -> world.spawn(draft("beta")));
+            assertEquals(GameplayDiagnosticCode.PENDING_MUTATION_LIMIT_EXCEEDED,
+                    mutationFailure.code());
+        }
+
+        GameplayLimits tinySnapshot = new GameplayLimits(
+                defaults.maxEntities(), defaults.maxComponentsPerEntity(),
+                defaults.maxSystems(), defaults.maxQueuedCommands(),
+                defaults.maxPendingMutations(), defaults.maxEventsPerTick(),
+                defaults.maxVisualEntries(), 16);
+        try (GameWorld world = GameWorld.builder(
+                        tinySnapshot, StandardComponents.registry())
+                .initializer(sink -> sink.spawn(playerDraft()))
+                .build()) {
+            GameplayException snapshotFailure = assertThrows(
+                    GameplayException.class, world::step);
+            assertEquals(GameplayDiagnosticCode.SNAPSHOT_LIMIT_EXCEEDED,
+                    snapshotFailure.code());
+        }
+    }
+
+    @Test
+    void presentationAndCapturePhasesCannotMutateAuthoritativeComponents() {
+        for (SystemPhase phase : List.of(
+                SystemPhase.RENDER_PREP, SystemPhase.RUNTIME_CAPTURE)) {
+            try (GameWorld world = baseBuilder()
+                    .initializer(sink -> sink.spawn(playerDraft()))
+                    .system(system("forbidden-" + phase.name().toLowerCase(),
+                            phase, 10, context -> context.replace(
+                                    PLAYER, Health.TYPE, new Health(2, 3))))
+                    .build()) {
+                GameplayException failure = assertThrows(
+                        GameplayException.class, world::step);
+                assertEquals(GameplayDiagnosticCode.MUTATION_NOT_ALLOWED_IN_PHASE,
+                        failure.code());
+            }
+        }
+    }
+
+    @Test
+    void customCodecDetachesMutableStateAndDefinesCanonicalFieldOrder() {
+        ComponentType<MutableCounter> type = new ComponentType<>(
+                "mutable-counter", MutableCounter.class);
+        ComponentRegistry registry = ComponentRegistry.builder().register(type,
+                new ComponentCodec<MutableCounter>() {
+                    @Override public MutableCounter snapshot(MutableCounter component) {
+                        return new MutableCounter(component.value);
+                    }
+
+                    @Override public void encode(
+                            MutableCounter component,
+                            io.github.teemuki8.libgdx.agent.gameplay.core.component
+                                    .CanonicalComponentWriter writer) {
+                        writer.integer(component.value);
+                    }
+                }).build();
+        MutableCounter source = new MutableCounter(7);
+        try (GameWorld world = GameWorld.builder(GameplayLimits.defaults(), registry)
+                .initializer(sink -> sink.spawn(EntityDraft.builder(EntityId.of("counter"))
+                        .with(type, source).build()))
+                .build()) {
+            WorldSnapshot completed = world.step().snapshot();
+            source.value = 99;
+            assertEquals(7, completed.entity(EntityId.of("counter")).orElseThrow()
+                    .component(type).orElseThrow().value);
+        }
+    }
+
+    private static final class MutableCounter implements Component {
+        private int value;
+
+        private MutableCounter(int value) {
+            this.value = value;
+        }
     }
 
     private static GameWorld.Builder baseBuilder() {

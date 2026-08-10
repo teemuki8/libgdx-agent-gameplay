@@ -11,6 +11,8 @@ import io.github.teemuki8.libgdx.agent.gameplay.box2d.GameplayBox2dBridge;
 import io.github.teemuki8.libgdx.agent.gameplay.core.GameplayLimits;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Collider;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Component;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.ComponentCodec;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.ComponentRegistry;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.ComponentType;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Render;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Sprite;
@@ -29,6 +31,7 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec2;
 import io.github.teemuki8.libgdx.agent.gameplay.core.world.EntityDraft;
 import io.github.teemuki8.libgdx.agent.gameplay.core.world.GameWorld;
 import io.github.teemuki8.libgdx.agent.gameplay.fixture.system.ArenaInputSystem;
+import io.github.teemuki8.libgdx.agent.gameplay.fixture.system.ArenaStateSnapshotSystem;
 import io.github.teemuki8.libgdx.agent.gameplay.fixture.system.DamageSystem;
 import io.github.teemuki8.libgdx.agent.gameplay.fixture.system.DeathAndScoreSystem;
 import io.github.teemuki8.libgdx.agent.gameplay.fixture.system.EnemyPursuitSystem;
@@ -48,9 +51,11 @@ public final class ArenaWorldFactory {
     public static final long FIXED_STEP_NANOS = 16_666_667L;
     public static final EntityId PLAYER_ID = EntityId.of("player");
     public static final EntityId ENEMY_ID = EntityId.of("enemy-primary");
+    public static final EntityId STATE_ID = EntityId.of("arena-state");
     public static final Box2dUnitConversion UNITS = new Box2dUnitConversion(32.0);
 
     private static final PrefabCatalog PREFABS = readPrefabs();
+    private static final ComponentRegistry COMPONENTS = components();
 
     private ArenaWorldFactory() {
     }
@@ -58,6 +63,12 @@ public final class ArenaWorldFactory {
     /** Returns the once-compiled strict canonical prefab catalog. */
     public static PrefabCatalog loadPrefabs() {
         return PREFABS;
+    }
+
+    static io.github.teemuki8.libgdx.agent.gameplay.core.replay.CanonicalWorldEncoder
+            canonicalEncoder() {
+        return new io.github.teemuki8.libgdx.agent.gameplay.core.replay.CanonicalWorldEncoder(
+                GameplayLimits.defaults().maxSnapshotBytes(), COMPONENTS);
     }
 
     /** Creates an application-owned arena session already in its actionable state. */
@@ -108,12 +119,12 @@ public final class ArenaWorldFactory {
                 state, PREFABS.require(PrefabId.of("projectile")));
 
         GameWorld.Builder builder = GameWorld.builder(
-                        GameplayLimits.defaults(), StandardComponents.registry())
+                        GameplayLimits.defaults(), COMPONENTS)
                 .fixedStepNanos(FIXED_STEP_NANOS)
-                .initializer(ArenaWorldFactory::initializeWorld)
+                .initializer(sink -> initializeWorld(sink, state))
                 .lifecycleParticipant(physics)
                 .system(new ArenaInputSystem(state))
-                .system(new EnemyPursuitSystem(state, physics));
+                .system(new EnemyPursuitSystem(state));
         if (gameplayRuntime != null) {
             gameplayRuntime.systems().forEach(builder::system);
         }
@@ -121,7 +132,8 @@ public final class ArenaWorldFactory {
         builder.system(weapons)
                 .system(new DamageSystem())
                 .system(new DeathAndScoreSystem(state, physics))
-                .system(new AnimationSystem(10));
+                .system(new AnimationSystem(10))
+                .system(new ArenaStateSnapshotSystem(state));
         if (visualPreparation != null) {
             builder.system(visualPreparation);
         }
@@ -153,7 +165,11 @@ public final class ArenaWorldFactory {
     }
 
     private static void initializeWorld(
-            io.github.teemuki8.libgdx.agent.gameplay.core.world.SpawnSink sink) {
+            io.github.teemuki8.libgdx.agent.gameplay.core.world.SpawnSink sink,
+            ArenaGameState state) {
+        sink.spawn(EntityDraft.builder(STATE_ID)
+                .with(ArenaStateComponent.TYPE, state.snapshot())
+                .build());
         sink.spawn(PREFABS.require(PrefabId.of("player")).instantiate(PLAYER_ID));
         sink.spawn(PREFABS.require(PrefabId.of("enemy")).instantiate(ENEMY_ID));
         sink.spawn(floor());
@@ -161,6 +177,32 @@ public final class ArenaWorldFactory {
         sink.spawn(wall("wall-right", new Vec2(948, 230), new Vec2(24, 412)));
         sink.spawn(wall("wall-bottom", new Vec2(480, 12), new Vec2(960, 24)));
         sink.spawn(wall("wall-top", new Vec2(480, 448), new Vec2(960, 24)));
+    }
+
+    private static ComponentRegistry components() {
+        ComponentRegistry.Builder builder = ComponentRegistry.builder();
+        StandardComponents.registry().types().forEach(builder::register);
+        return builder.register(ArenaStateComponent.TYPE,
+                new ComponentCodec<ArenaStateComponent>() {
+                    @Override public ArenaStateComponent snapshot(ArenaStateComponent value) {
+                        return value;
+                    }
+
+                    @Override public void encode(
+                            ArenaStateComponent value,
+                            io.github.teemuki8.libgdx.agent.gameplay.core.component
+                                    .CanonicalComponentWriter writer) {
+                        writer.text(value.screen().name());
+                        writer.decimal(value.aimDirection().x());
+                        writer.decimal(value.aimDirection().y());
+                        writer.longValue(value.nextFireTick());
+                        writer.longValue(value.score());
+                        writer.bool(value.enemyKilled());
+                        writer.longValue(value.enemyDeathTick());
+                        writer.text(value.enemyKillingSource());
+                        writer.bool(value.playerKilled());
+                    }
+                }).build();
     }
 
     private static EntityDraft floor() {

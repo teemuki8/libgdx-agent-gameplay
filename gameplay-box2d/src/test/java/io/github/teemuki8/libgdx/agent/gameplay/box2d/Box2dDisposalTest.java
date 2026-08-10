@@ -57,7 +57,7 @@ final class Box2dDisposalTest {
 
                     @Override public void update(SystemContext context) {
                         if (context.tick() == 1) {
-                            assertFalse(bridge.body(EntityId.of("player"))
+                            assertFalse(bridge.handle(EntityId.of("player"))
                                     .orElseThrow().body().isActive());
                             observed.add("runtime-capture:" + nativeWorld.getBodyCount());
                         }

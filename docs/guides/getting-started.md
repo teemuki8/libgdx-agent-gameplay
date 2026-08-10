@@ -25,10 +25,18 @@ V1 hard maxima are 10,000 entities, 64 components per entity, 256 systems, 4,096
 4,096 pending mutations, 4,096 events per tick, 10,000 visual entries, and a 4 MiB canonical
 snapshot. Applications may lower these values but cannot raise them.
 
+Custom components require `ComponentRegistry.Builder.register(type, codec)`. The codec must return
+a deeply immutable detached snapshot value and write every authoritative field through
+`CanonicalComponentWriter` in one stable order. The world uses that same registry both when
+copying completed snapshots and enforcing the configured canonical byte cap; there is no
+reflection or fallback serialization. Runtime exposure separately requires an explicit
+`RuntimeProjection`.
+
 Failures are `GameplayException` values with a stable `GameplayDiagnosticCode`, operation,
 expected value, observed value, and corrective action. For example, `LATE_COMMAND` means the
-target tick has already passed; enqueue for the current/future tick instead of retrying an obsolete
-envelope. `OWNER_THREAD_VIOLATION` means mutation must be scheduled back to the world owner.
+target tick has already passed; external producers enqueue for the current/future tick, while an
+`INPUT` system must target a later tick because the current tick has already been drained.
+`OWNER_THREAD_VIOLATION` means mutation must be scheduled back to the adapter owner.
 
 For a complete integration, inspect the non-published `gameplay-fixture`: it composes a real fixed
 tick world, Box2D, rendering, markup-only HUD, runtime evidence, and stdio harness without changing

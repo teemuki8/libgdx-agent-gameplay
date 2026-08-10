@@ -46,7 +46,7 @@ final class Box2dAuthorityTest {
                     .component(Transform2D.TYPE).orElseThrow();
             Movement movement = completed.snapshot().entity(player).orElseThrow()
                     .component(Movement.TYPE).orElseThrow();
-            Vector2 nativePosition = bridge.body(player).orElseThrow().body().getPosition();
+            Vector2 nativePosition = bridge.handle(player).orElseThrow().body().getPosition();
 
             assertEquals(Box2dTestSupport.UNITS.toRenderUnits(nativePosition.x),
                     transform.position().x(), 0.0001);

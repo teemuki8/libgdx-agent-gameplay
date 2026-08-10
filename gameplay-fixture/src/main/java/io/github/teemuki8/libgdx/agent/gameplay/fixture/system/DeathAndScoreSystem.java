@@ -44,8 +44,7 @@ public final class DeathAndScoreSystem implements GameSystem {
             EntityId source = lastDamageSource(context, ArenaWorldFactory.ENEMY_ID);
             state.killEnemy(context.tick(), source);
             context.emit(new EntityKilled(ArenaWorldFactory.ENEMY_ID, source));
-            physics.body(ArenaWorldFactory.ENEMY_ID).ifPresent(handle ->
-                    handle.body().setActive(false));
+            physics.deactivate(ArenaWorldFactory.ENEMY_ID);
             enemy.orElseThrow().component(Animation.TYPE).ifPresent(animation ->
                     context.replace(ArenaWorldFactory.ENEMY_ID, Animation.TYPE,
                             new Animation(animation.clips(), "death", 0, 0)));
@@ -65,8 +64,7 @@ public final class DeathAndScoreSystem implements GameSystem {
             EntityId source = lastDamageSource(context, ArenaWorldFactory.PLAYER_ID);
             state.killPlayer();
             context.emit(new EntityKilled(ArenaWorldFactory.PLAYER_ID, source));
-            physics.body(ArenaWorldFactory.PLAYER_ID).ifPresent(handle ->
-                    handle.body().setLinearVelocity(0, 0));
+            physics.stop(ArenaWorldFactory.PLAYER_ID);
         }
     }
 

@@ -29,6 +29,7 @@ public final class GameplayRenderer implements AutoCloseable {
     private final SpriteBatch batch;
     private final OrthographicCamera camera;
     private final AssetResolver assets;
+    private final Thread ownerThread;
     private boolean closed;
 
     /** Wraps but never disposes the application-owned graphics objects. */
@@ -37,10 +38,12 @@ public final class GameplayRenderer implements AutoCloseable {
         this.batch = Objects.requireNonNull(batch, "batch");
         this.camera = Objects.requireNonNull(camera, "camera");
         this.assets = Objects.requireNonNull(assets, "assets");
+        ownerThread = Thread.currentThread();
     }
 
     /** Resolves every region first, then draws in layer/order/entity order. */
     public void render(WorldSnapshot snapshot) {
+        requireOwner("render-gameplay");
         if (closed) {
             throw GameplayException.validation(
                     GameplayDiagnosticCode.RENDERER_CLOSED,
@@ -108,7 +111,19 @@ public final class GameplayRenderer implements AutoCloseable {
     /** Clears adapter state without touching caller-owned graphics resources. */
     @Override
     public void close() {
+        requireOwner("close-gameplay-renderer");
         closed = true;
+    }
+
+    private void requireOwner(String operation) {
+        if (Thread.currentThread() != ownerThread) {
+            throw GameplayException.validation(
+                    GameplayDiagnosticCode.OWNER_THREAD_VIOLATION,
+                    operation,
+                    "owner thread " + ownerThread.getName(),
+                    Thread.currentThread().getName(),
+                    "Render and close on the libGDX render thread.");
+        }
     }
 
     private record DrawEntry(

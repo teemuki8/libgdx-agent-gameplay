@@ -33,7 +33,7 @@ final class GameplayBox2dBridgeTest {
 
         try (GameWorld world = builder.build()) {
             world.step();
-            Box2dBodyHandle handle = bridge.body(EntityId.of("player")).orElseThrow();
+            Box2dBodyHandle handle = bridge.handle(EntityId.of("player")).orElseThrow();
             assertEquals(EntityId.of("player"), handle.body().getUserData());
             assertEquals(1, nativeWorld.getBodyCount());
             runtime.frame(1, () -> { });

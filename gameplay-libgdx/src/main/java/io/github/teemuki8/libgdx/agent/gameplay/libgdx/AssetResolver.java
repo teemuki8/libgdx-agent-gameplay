@@ -13,14 +13,17 @@ import java.util.Objects;
 /** Explicit logical-region resolver over one application-owned texture atlas. */
 public final class AssetResolver {
     private final TextureAtlas atlas;
+    private final Thread ownerThread;
 
     /** Wraps but does not own or dispose the supplied atlas. */
     public AssetResolver(TextureAtlas atlas) {
         this.atlas = Objects.requireNonNull(atlas, "atlas");
+        ownerThread = Thread.currentThread();
     }
 
     /** Resolves the frame already selected by authoritative animation state. */
     public ResolvedFrame resolve(Sprite sprite, Animation animation, long tick) {
+        requireOwner("resolve-gameplay-asset");
         Objects.requireNonNull(sprite, "sprite");
         if (tick < 0) {
             throw failure(sprite.asset(), sprite.region(), tick,
@@ -37,11 +40,13 @@ public final class AssetResolver {
 
     /** Configures caller-owned atlas textures for crisp nearest-neighbor fixture rendering. */
     public void useNearestFiltering() {
+        requireOwner("configure-gameplay-asset-filtering");
         atlas.getTextures().forEach(texture -> texture.setFilter(
                 Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest));
     }
 
     String regionFor(Sprite sprite, Animation animation) {
+        requireOwner("select-gameplay-asset-region");
         if (animation == null) {
             return sprite.region();
         }
@@ -51,6 +56,17 @@ public final class AssetResolver {
                     "declared current animation clip and frame");
         }
         return clip.frames().get(animation.frameIndex());
+    }
+
+    private void requireOwner(String operation) {
+        if (Thread.currentThread() != ownerThread) {
+            throw GameplayException.validation(
+                    GameplayDiagnosticCode.OWNER_THREAD_VIOLATION,
+                    operation,
+                    "owner thread " + ownerThread.getName(),
+                    Thread.currentThread().getName(),
+                    "Resolve and mutate atlas resources on the libGDX render thread.");
+        }
     }
 
     private static GameplayException failure(

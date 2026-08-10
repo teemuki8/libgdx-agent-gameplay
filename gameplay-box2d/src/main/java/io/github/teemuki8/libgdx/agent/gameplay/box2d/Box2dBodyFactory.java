@@ -41,7 +41,7 @@ public final class Box2dBodyFactory {
     }
 
     /** Creates one body/fixture pair in the caller-owned world. */
-    public Box2dBodyHandle create(World world, EntityView entity) {
+    Box2dBodyHandle create(World world, EntityView entity) {
         Objects.requireNonNull(world, "world");
         EntityView checked = Objects.requireNonNull(entity, "entity");
         Transform2D transform = checked.component(Transform2D.TYPE)
@@ -82,7 +82,8 @@ public final class Box2dBodyFactory {
             fixtureDef.filter.maskBits = (short) collider.maskBits();
             Fixture fixture = body.createFixture(fixtureDef);
             fixture.setUserData(new FixtureIdentity(checked.id(), fixtureId));
-            return new Box2dBodyHandle(checked.id(), fixtureId, bodyType, body, fixture);
+            return new Box2dBodyHandle(
+                    checked.id(), fixtureId, bodyType, body, fixture, collider);
         } catch (RuntimeException | Error failure) {
             if (body != null) {
                 world.destroyBody(body);
