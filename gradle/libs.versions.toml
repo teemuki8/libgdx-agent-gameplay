@@ -6,7 +6,7 @@ harness = "1.2.1"
 markup = "0.5.0"
 junit = "6.1.2"
 slf4j = "2.0.17"
-japicmp = "0.23.1"
+japicmp = "0.26.1"
 
 [libraries]
 gdx-core = { module = "com.badlogicgames.gdx:gdx", version.ref = "gdx" }
