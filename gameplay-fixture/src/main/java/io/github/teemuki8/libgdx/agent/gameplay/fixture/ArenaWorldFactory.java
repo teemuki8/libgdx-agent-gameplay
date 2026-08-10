@@ -204,14 +204,14 @@ public final class ArenaWorldFactory {
 
     /** Owns one fixture-only world, runtime, native world, and production input multiplexer. */
     public static final class ArenaSession implements AutoCloseable {
-        private final GameWorld world;
-        private final World nativeWorld;
+        private GameWorld world;
+        private World nativeWorld;
         private final AgentRuntime runtime;
-        private final GameplayBox2dBridge physics;
+        private GameplayBox2dBridge physics;
         private final ArenaGameState state;
-        private final ArenaInputProcessor inputProcessor;
+        private ArenaInputProcessor inputProcessor;
         private final InputMultiplexer input;
-        private final WeaponSystem weapons;
+        private WeaponSystem weapons;
         private final boolean ownsNativeResources;
         private boolean closed;
 
@@ -256,14 +256,34 @@ public final class ArenaWorldFactory {
             return physics;
         }
 
+        /** Returns the caller-owned runtime used by fixture adapters. */
+        public AgentRuntime runtime() {
+            return runtime;
+        }
+
         /** Requests and completes a deterministic reset into the playing state. */
         public void resetPlaying() {
             inputProcessor.reset();
             weapons.reset();
             state.reset();
             state.startPlaying();
+            if (ownsNativeResources) {
+                input.removeProcessor(inputProcessor);
+                world.close();
+                physics.close();
+                nativeWorld.dispose();
+                World replacementWorld = new World(new Vector2(), true);
+                ArenaSession replacement = open(
+                        state, replacementWorld, runtime, input, null, null, true);
+                world = replacement.world;
+                nativeWorld = replacement.nativeWorld;
+                physics = replacement.physics;
+                inputProcessor = replacement.inputProcessor;
+                weapons = replacement.weapons;
+                replacement.closed = true;
+                return;
+            }
             world.requestReset();
-            world.step();
             world.step();
         }
 
@@ -272,6 +292,7 @@ public final class ArenaWorldFactory {
             if (closed) {
                 return;
             }
+            input.removeProcessor(inputProcessor);
             world.close();
             physics.close();
             if (ownsNativeResources) {

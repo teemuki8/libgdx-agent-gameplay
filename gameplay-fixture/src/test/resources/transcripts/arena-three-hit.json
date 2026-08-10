@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "arena-production-input/1",
+  "ticks": 420,
+  "presses": [
+    {"tick": 0, "key": "W"},
+    {"tick": 2, "key": "D"},
+    {"tick": 4, "key": "SPACE"},
+    {"tick": 84, "key": "SPACE"},
+    {"tick": 164, "key": "SPACE"}
+  ]
+}

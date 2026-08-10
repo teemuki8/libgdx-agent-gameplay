@@ -303,8 +303,15 @@ public final class ArenaApplication extends ApplicationAdapter {
 
     private void resetArena() {
         displayedScoreOverride = null;
-        arena.resetPlaying();
-        forceTick = true;
+        arena.close();
+        nativeWorld.dispose();
+        state.reset();
+        state.startPlaying();
+        nativeWorld = new World(new Vector2(), true);
+        arena = ArenaWorldFactory.openApplication(
+                state, nativeWorld, runtime, input, gameplayRuntime, runtimeProjection);
+        arena.world().step();
+        forceTick = false;
         titleOverlay.setVisible(false);
         gameOverOverlay.setVisible(false);
         stage.setKeyboardFocus(resetButton);
