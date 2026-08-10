@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "gameplay-prefabs/1",
+  "prefabs": [
+    {
+      "id": "player",
+      "components": [
+        {"type":"transform","position":[180,220],"rotationRadians":0,"size":[32,32],"pivot":[0.5,0.5]},
+        {"type":"movement","velocity":[0,0],"maxSpeed":96},
+        {"type":"health","current":3,"max":3},
+        {"type":"faction","value":"player"},
+        {"type":"collider","shape":"box","size":[28,28],"offset":[0,0],"sensor":false,"categoryBits":1,"maskBits":10},
+        {"type":"sprite","asset":"art/arena.atlas","region":"player-idle","visualSize":[32,32],"origin":[0.5,0.5]},
+        {"type":"animation","clips":[
+          {"name":"idle","frames":["player-idle"],"frameDurationTicks":6,"loop":true},
+          {"name":"hit","frames":["player-hit"],"frameDurationTicks":4,"loop":false}
+        ],"currentClip":"idle","elapsedTicks":0,"frameIndex":0},
+        {"type":"render","layer":"actors","order":20,"tint":[1,1,1,1],"visible":true}
+      ]
+    },
+    {
+      "id": "enemy",
+      "components": [
+        {"type":"transform","position":[760,220],"rotationRadians":0,"size":[32,32],"pivot":[0.5,0.5]},
+        {"type":"movement","velocity":[0,0],"maxSpeed":48},
+        {"type":"health","current":3,"max":3},
+        {"type":"faction","value":"enemy"},
+        {"type":"collider","shape":"box","size":[28,28],"offset":[0,0],"sensor":false,"categoryBits":2,"maskBits":13},
+        {"type":"sprite","asset":"art/arena.atlas","region":"enemy-idle","visualSize":[32,32],"origin":[0.5,0.5]},
+        {"type":"animation","clips":[
+          {"name":"idle","frames":["enemy-idle"],"frameDurationTicks":6,"loop":true},
+          {"name":"hit","frames":["enemy-hit"],"frameDurationTicks":4,"loop":false},
+          {"name":"death","frames":["enemy-death-0","enemy-death-1","enemy-death-2","enemy-death-3"],"frameDurationTicks":6,"loop":false}
+        ],"currentClip":"idle","elapsedTicks":0,"frameIndex":0},
+        {"type":"render","layer":"actors","order":30,"tint":[1,1,1,1],"visible":true}
+      ]
+    },
+    {
+      "id": "projectile",
+      "components": [
+        {"type":"transform","position":[0,0],"rotationRadians":0,"size":[12,12],"pivot":[0.5,0.5]},
+        {"type":"movement","velocity":[320,0],"maxSpeed":320},
+        {"type":"faction","value":"projectile"},
+        {"type":"lifetime","remainingTicks":180},
+        {"type":"collider","shape":"box","size":[8,8],"offset":[0,0],"sensor":false,"categoryBits":4,"maskBits":10},
+        {"type":"sprite","asset":"art/arena.atlas","region":"projectile","visualSize":[12,12],"origin":[0.5,0.5]},
+        {"type":"render","layer":"projectiles","order":40,"tint":[1,1,1,1],"visible":true}
+      ]
+    },
+    {
+      "id": "wall",
+      "components": [
+        {"type":"transform","position":[0,0],"rotationRadians":0,"size":[24,24],"pivot":[0.5,0.5]},
+        {"type":"faction","value":"wall"},
+        {"type":"collider","shape":"box","size":[24,24],"offset":[0,0],"sensor":false,"categoryBits":8,"maskBits":7}
+      ]
+    }
+  ]
+}
