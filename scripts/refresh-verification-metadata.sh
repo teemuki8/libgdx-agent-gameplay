@@ -5,7 +5,7 @@ set -euo pipefail
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_root"
 
-./gradlew --write-verification-metadata sha256 resolveVerificationArtifacts \
+./gradlew --write-locks --write-verification-metadata sha256 resolveVerificationArtifacts \
   --warning-mode=fail "$@"
 
 printf 'candidate verification metadata: %s\n' \

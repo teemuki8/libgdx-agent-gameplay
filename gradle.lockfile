@@ -1,0 +1,24 @@
+# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+# To regenerate this file, run: ./gradlew :dependencies --write-locks
+com.github.siom79.japicmp:japicmp:0.23.1=japicmpClasspath
+com.google.code.findbugs:jsr305:3.0.2=japicmpClasspath
+com.google.errorprone:error_prone_annotations:2.23.0=japicmpClasspath
+com.google.guava:failureaccess:1.0.2=japicmpClasspath
+com.google.guava:guava:33.0.0-jre=japicmpClasspath
+com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava=japicmpClasspath
+com.sun.istack:istack-commons-runtime:3.0.8=japicmpClasspath
+com.sun.xml.fastinfoset:FastInfoset:1.2.16=japicmpClasspath
+gradle:gradle:9.6.1=ideaToolingVerification
+jakarta.activation:jakarta.activation-api:1.2.1=japicmpClasspath
+jakarta.xml.bind:jakarta.xml.bind-api:2.3.2=japicmpClasspath
+org.checkerframework:checker-qual:3.41.0=japicmpClasspath
+org.glassfish.jaxb:jaxb-runtime:2.3.2=japicmpClasspath
+org.glassfish.jaxb:txw2:2.3.2=japicmpClasspath
+org.javassist:javassist:3.30.2-GA=japicmpClasspath
+org.jetbrains.kotlin:kotlin-reflect:2.3.21=ideaToolingVerification
+org.jetbrains.kotlin:kotlin-stdlib:2.3.21=ideaToolingVerification
+org.jetbrains:annotations:13.0=ideaToolingVerification
+org.jvnet.staxex:stax-ex:1.8.1=japicmpClasspath
+empty=gameplay-box2dApiBaseline,gameplay-coreApiBaseline,gameplay-libgdxApiBaseline,gameplay-runtimeApiBaseline

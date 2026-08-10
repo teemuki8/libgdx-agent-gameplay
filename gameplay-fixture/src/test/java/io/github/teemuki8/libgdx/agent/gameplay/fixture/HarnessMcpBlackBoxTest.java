@@ -132,13 +132,17 @@ final class HarnessMcpBlackBoxTest {
         }
         Path destination = root.resolve("docs/evidence/screenshots").resolve(filename);
         Files.createDirectories(destination.getParent());
-        Files.copy(stored, destination, StandardCopyOption.REPLACE_EXISTING);
+        if (Files.notExists(destination)) {
+            Files.copy(stored, destination, StandardCopyOption.COPY_ATTRIBUTES);
+        }
     }
 
     private static void retainJson(Path root, JsonNode value, String filename) throws Exception {
         Path destination = root.resolve("docs/evidence").resolve(filename);
         Files.createDirectories(destination.getParent());
-        Files.writeString(destination, value.toPrettyString() + System.lineSeparator());
+        if (Files.notExists(destination)) {
+            Files.writeString(destination, value.toPrettyString() + System.lineSeparator());
+        }
     }
 
     private static Path findArtifact(

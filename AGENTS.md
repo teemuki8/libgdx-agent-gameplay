@@ -124,3 +124,9 @@ Maven Central publication is irreversible. Ordinary implementation, repository c
 repair, or release readiness does not authorize a version tag, GitHub release, Central staging,
 Central publish/drop action, or release-workflow dispatch. Those actions require separate explicit
 authorization.
+
+Only `gameplay-core`, `gameplay-libgdx`, `gameplay-runtime`, and `gameplay-box2d` are publishable.
+`gameplay-fixture` is qualification-only and must never enter a library JAR, POM, or Central
+deployment. Initial API compatibility tasks explicitly skip until a real released baseline is
+supplied with `-PapiBaselineVersion`; never invent a baseline. Disposable
+`qualificationRepository` publication is consumer verification, not distribution.
