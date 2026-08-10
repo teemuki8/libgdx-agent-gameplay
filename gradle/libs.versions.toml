@@ -1,0 +1,31 @@
+[versions]
+gdx = "1.14.2"
+jackson = "2.22.1"
+agent-runtime = "2.1.0"
+harness = "1.2.1"
+markup = "0.5.0"
+junit = "6.1.2"
+slf4j = "2.0.17"
+japicmp = "0.23.1"
+
+[libraries]
+gdx-core = { module = "com.badlogicgames.gdx:gdx", version.ref = "gdx" }
+gdx-lwjgl3 = { module = "com.badlogicgames.gdx:gdx-backend-lwjgl3", version.ref = "gdx" }
+gdx-box2d = { module = "com.badlogicgames.gdx:gdx-box2d", version.ref = "gdx" }
+gdx-platform = { module = "com.badlogicgames.gdx:gdx-platform", version.ref = "gdx" }
+gdx-box2d-platform = { module = "com.badlogicgames.gdx:gdx-box2d-platform", version.ref = "gdx" }
+jackson-core = { module = "com.fasterxml.jackson.core:jackson-core", version.ref = "jackson" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+agent-runtime-core = { module = "io.github.teemuki8:agent-runtime-core", version.ref = "agent-runtime" }
+agent-runtime-box2d = { module = "io.github.teemuki8:agent-runtime-box2d", version.ref = "agent-runtime" }
+harness-lwjgl3 = { module = "io.github.teemuki8:harness-lwjgl3", version.ref = "harness" }
+harness-mcp = { module = "io.github.teemuki8:harness-mcp", version.ref = "harness" }
+harness-protocol = { module = "io.github.teemuki8:harness-protocol", version.ref = "harness" }
+harness-agent-runtime = { module = "io.github.teemuki8:harness-agent-runtime", version.ref = "harness" }
+markup-core = { module = "io.github.teemuki8:libgdx-ui-markup", version.ref = "markup" }
+markup-harness = { module = "io.github.teemuki8:libgdx-ui-markup-harness", version.ref = "markup" }
+markup-runtime = { module = "io.github.teemuki8:libgdx-ui-markup-runtime", version.ref = "markup" }
+slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit" }
+japicmp = { module = "com.github.siom79.japicmp:japicmp", version.ref = "japicmp" }
