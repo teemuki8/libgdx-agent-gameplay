@@ -21,6 +21,7 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.prefab.PrefabDefinition;
 import io.github.teemuki8.libgdx.agent.gameplay.core.prefab.PrefabLimits;
 import io.github.teemuki8.libgdx.agent.gameplay.core.prefab.PrefabParser;
 import io.github.teemuki8.libgdx.agent.gameplay.core.prefab.StandardComponentCodecs;
+import io.github.teemuki8.libgdx.agent.gameplay.core.system.GameSystem;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.PrefabId;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.Rgba;
@@ -33,6 +34,7 @@ import io.github.teemuki8.libgdx.agent.gameplay.fixture.system.DeathAndScoreSyst
 import io.github.teemuki8.libgdx.agent.gameplay.fixture.system.EnemyPursuitSystem;
 import io.github.teemuki8.libgdx.agent.gameplay.fixture.system.WeaponSystem;
 import io.github.teemuki8.libgdx.agent.gameplay.libgdx.AnimationSystem;
+import io.github.teemuki8.libgdx.agent.gameplay.runtime.GameplayRuntimeBridge;
 import io.github.teemuki8.libgdx.agent.runtime.core.AgentRuntime;
 import java.io.IOException;
 import java.io.InputStream;
@@ -64,6 +66,38 @@ public final class ArenaWorldFactory {
         state.startPlaying();
         World nativeWorld = new World(new Vector2(), true);
         AgentRuntime runtime = AgentRuntime.builder().build();
+        InputMultiplexer input = new InputMultiplexer();
+        ArenaSession session = open(
+                state, nativeWorld, runtime, input, null, null, true);
+        runtime.start();
+        return session;
+    }
+
+    /** Builds the render-thread fixture around caller-owned application resources. */
+    static ArenaSession openApplication(
+            ArenaGameState state,
+            World nativeWorld,
+            AgentRuntime runtime,
+            InputMultiplexer input,
+            GameplayRuntimeBridge gameplayRuntime,
+            GameSystem visualPreparation) {
+        return open(state, nativeWorld, runtime, input,
+                Objects.requireNonNull(gameplayRuntime, "gameplayRuntime"),
+                Objects.requireNonNull(visualPreparation, "visualPreparation"), false);
+    }
+
+    private static ArenaSession open(
+            ArenaGameState state,
+            World nativeWorld,
+            AgentRuntime runtime,
+            InputMultiplexer input,
+            GameplayRuntimeBridge gameplayRuntime,
+            GameSystem visualPreparation,
+            boolean ownsNativeResources) {
+        Objects.requireNonNull(state, "state");
+        Objects.requireNonNull(nativeWorld, "nativeWorld");
+        Objects.requireNonNull(runtime, "runtime");
+        Objects.requireNonNull(input, "input");
         Box2dBodyFactory bodyFactory = new Box2dBodyFactory(UNITS, entity ->
                 entity.id().value().startsWith("wall-")
                         ? BodyDef.BodyType.StaticBody : BodyDef.BodyType.DynamicBody);
@@ -80,18 +114,24 @@ public final class ArenaWorldFactory {
                 .lifecycleParticipant(physics)
                 .system(new ArenaInputSystem(state))
                 .system(new EnemyPursuitSystem(state, physics));
+        if (gameplayRuntime != null) {
+            gameplayRuntime.systems().forEach(builder::system);
+        }
         physics.systems().forEach(builder::system);
         builder.system(weapons)
                 .system(new DamageSystem())
                 .system(new DeathAndScoreSystem(state, physics))
                 .system(new AnimationSystem(10));
+        if (visualPreparation != null) {
+            builder.system(visualPreparation);
+        }
         GameWorld world = builder.build();
         ArenaInputProcessor inputProcessor = new ArenaInputProcessor(world, state);
-        InputMultiplexer input = new InputMultiplexer(inputProcessor);
+        input.addProcessor(inputProcessor);
         nativeWorld.setContactListener(physics.contactListener());
-        runtime.start();
         return new ArenaSession(
-                world, nativeWorld, runtime, physics, state, inputProcessor, input, weapons);
+                world, nativeWorld, runtime, physics, state, inputProcessor, input, weapons,
+                ownsNativeResources);
     }
 
     /** Copies one prefab while replacing explicitly supplied standard components. */
@@ -172,6 +212,7 @@ public final class ArenaWorldFactory {
         private final ArenaInputProcessor inputProcessor;
         private final InputMultiplexer input;
         private final WeaponSystem weapons;
+        private final boolean ownsNativeResources;
         private boolean closed;
 
         private ArenaSession(
@@ -182,7 +223,8 @@ public final class ArenaWorldFactory {
                 ArenaGameState state,
                 ArenaInputProcessor inputProcessor,
                 InputMultiplexer input,
-                WeaponSystem weapons) {
+                WeaponSystem weapons,
+                boolean ownsNativeResources) {
             this.world = world;
             this.nativeWorld = nativeWorld;
             this.runtime = runtime;
@@ -191,6 +233,7 @@ public final class ArenaWorldFactory {
             this.inputProcessor = inputProcessor;
             this.input = input;
             this.weapons = weapons;
+            this.ownsNativeResources = ownsNativeResources;
         }
 
         /** Returns the owner-thread gameplay world. */
@@ -206,6 +249,11 @@ public final class ArenaWorldFactory {
         /** Returns independent arena state. */
         public ArenaGameState state() {
             return state;
+        }
+
+        /** Returns the active Box2D adapter for immutable/native qualification queries. */
+        public GameplayBox2dBridge physics() {
+            return physics;
         }
 
         /** Requests and completes a deterministic reset into the playing state. */
@@ -226,8 +274,10 @@ public final class ArenaWorldFactory {
             }
             world.close();
             physics.close();
-            runtime.close();
-            nativeWorld.dispose();
+            if (ownsNativeResources) {
+                runtime.close();
+                nativeWorld.dispose();
+            }
             closed = true;
         }
     }

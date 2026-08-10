@@ -1,0 +1,18 @@
+:root {
+  --full: 100%;
+  --panel: panel;
+  --text: text;
+  --accent: accent;
+  --accent-over: accent-over;
+  --accent-down: accent-down;
+}
+
+#arena-ui { width: var(--full); height: var(--full); }
+#hud-bar { background: var(--panel); }
+#title-overlay { background: var(--panel); }
+#game-over-overlay { background: var(--panel); }
+.title { font-color: var(--text); }
+.value { font-color: var(--accent); }
+button.primary { background: var(--accent); font-color: var(--text); }
+button.primary:hover { background: var(--accent-over); }
+button.primary:pressed { background: var(--accent-down); }

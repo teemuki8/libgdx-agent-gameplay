@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui>
+  <table id="arena-ui" width="960" height="540">
+    <table id="hud-bar" class="panel" width="960" height="80" fill="x" expand="x"
+           pad="10" align="center center">
+      <label id="screen-label" name="Screen label" label="Screen" text="SCREEN"
+             width="64" pad="6"/>
+      <label id="screen-value" name="Screen value" label="Screen" class="value"
+             text="TITLE" width="82" pad="6"
+             data-runtime-entity="gameplay-arena"
+             data-runtime-type="arena-state"
+             data-runtime-property="screen"
+             data-runtime-name="Arena state"/>
+      <label id="health-label" name="Health label" label="Health" text="HEALTH"
+             width="68" pad="6"/>
+      <label id="health-value" name="Health value" label="Health" class="value"
+             text="3" width="32" pad="6"
+             data-runtime-entity="gameplay-player"
+             data-runtime-type="arena-actor"
+             data-runtime-property="health-current"
+             data-runtime-name="Player"/>
+      <label id="score-label" name="Score label" label="Score" text="SCORE"
+             width="58" pad="6"/>
+      <label id="score-value" name="Score value" label="Score" class="value"
+             text="0" width="64" pad="6"
+             data-runtime-entity="gameplay-arena"
+             data-runtime-type="arena-state"
+             data-runtime-property="score"
+             data-runtime-name="Arena state"/>
+      <label id="controls-help" name="Controls" label="Controls"
+             text="WASD MOVE  |  SPACE FIRE" width="250" pad="6"/>
+      <button id="reset-button" name="Reset arena" label="Reset arena" class="primary"
+              text="Reset arena" width="132" height="44" pad="6"/>
+    </table>
+    <row/>
+    <stack id="arena-overlays" width="960" height="460" fill="true" expand="true">
+      <table id="title-overlay" class="panel" width="960" height="460"
+             align="center center">
+        <label id="game-title" name="Game title" label="Agent Arena" class="title"
+               text="AGENT ARENA" width="360" height="64" align="center"/>
+        <row/>
+        <label id="objective" name="Objective" label="Objective"
+               text="Destroy the pursuing drone with three shots" width="520"
+               height="42" align="center"/>
+        <row/>
+        <button id="start-button" name="Start game" label="Start game" class="primary"
+                text="Press Enter to start" width="260" height="52" pad="16"/>
+      </table>
+      <table id="game-over-overlay" class="panel" width="960" height="460"
+             align="center center">
+        <label id="game-over-message" name="Game over" label="Game over" class="title"
+               text="GAME OVER" width="320" height="64" align="center"/>
+        <row/>
+        <label id="recovery-help" name="Recovery" label="Recovery"
+               text="Use Reset arena to try the same seed again" width="520"
+               height="42" align="center"/>
+      </table>
+    </stack>
+  </table>
+</ui>
