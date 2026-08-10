@@ -14,7 +14,7 @@
           {"name":"idle","frames":["player-idle"],"frameDurationTicks":6,"loop":true},
           {"name":"hit","frames":["player-hit"],"frameDurationTicks":4,"loop":false}
         ],"currentClip":"idle","elapsedTicks":0,"frameIndex":0},
-        {"type":"render","layer":"actors","order":20,"tint":[1,1,1,1],"visible":true}
+        {"type":"render","layer":"characters","order":20,"tint":[1,1,1,1],"visible":true}
       ]
     },
     {
@@ -31,7 +31,7 @@
           {"name":"hit","frames":["enemy-hit"],"frameDurationTicks":4,"loop":false},
           {"name":"death","frames":["enemy-death-0","enemy-death-1","enemy-death-2","enemy-death-3"],"frameDurationTicks":6,"loop":false}
         ],"currentClip":"idle","elapsedTicks":0,"frameIndex":0},
-        {"type":"render","layer":"actors","order":30,"tint":[1,1,1,1],"visible":true}
+        {"type":"render","layer":"characters","order":30,"tint":[1,1,1,1],"visible":true}
       ]
     },
     {

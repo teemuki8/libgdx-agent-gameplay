@@ -32,3 +32,20 @@ tasks.named<JavaExec>("run") {
 base {
     archivesName.set("libgdx-agent-gameplay-fixture")
 }
+
+tasks.jar {
+    dependsOn(configurations.runtimeClasspath)
+    archiveVersion.set("")
+    manifest {
+        attributes["Main-Class"] = application.mainClass.get()
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
+    from(configurations.runtimeClasspath.get().map {
+        if (it.isDirectory) it else zipTree(it)
+    })
+}
+
+tasks.test {
+    dependsOn(tasks.jar)
+}

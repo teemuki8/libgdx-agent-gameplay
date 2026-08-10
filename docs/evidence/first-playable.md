@@ -49,7 +49,11 @@ intent, not claims inferred from third-party footage or assets.
   projectile body rotation is the authored firing heading.
 - Intentional differences between visual and physical representation: two-pixel actor inset and
   two-pixel projectile inset on every side keep collision feedback inside the readable silhouette.
-- Debug-render or overlay evidence: pending running-game Box2D/runtime capture.
+- Debug-render or overlay evidence: the native inspection regression identifies
+  `box2d.body.player` and `box2d.fixture.player.collider`, measures the four Box2D polygon
+  vertices through the shared 32-units-per-metre conversion, and proves the 28x28 proxy remains
+  inside the 32x32 visual. The runtime capture independently reports matching visual bounds and
+  camera visibility; no debug overlay was added to the production UI.
 
 ## Original art provenance and normalization
 
@@ -83,30 +87,60 @@ outputs and the 256x256 packed atlas were opened and inspected at original resol
 
 | State | Player-equivalent steps | Screenshot path or opaque receipt | Original resolution | Inspected findings |
 |---|---|---|---|---|
-| First actionable frame | Pending MCP walkthrough | Pending | 960x540 | Pending |
-| Primary movement/action response | Pending MCP walkthrough | Pending | 960x540 | Pending |
-| Reward/danger/failure/recovery | Pending MCP walkthrough | Pending | 960x540 | Pending |
+| First actionable frame | Query accessible **Start game**, real Enter `Press`, wait for `PLAYING` | [`screenshots/01-actionable.png`](screenshots/01-actionable.png), retained only after receipt SHA/length/type verification | 960x540 | Player and enemy silhouettes are distinct at authored start positions; HUD is wholly above y=460 and the safe region remains clear |
+| Primary movement/action response | Real W, D, and Space `Press` actions through the application `InputMultiplexer` | [`screenshots/02-movement-fire.png`](screenshots/02-movement-fire.png) | 960x540 | Player translation is visible and a cyan projectile lies on the direct player-to-enemy firing line; centered sprite/collider policy remains readable |
+| Reward state | Two further real Space `Press` actions; wait for enemy health 0 and score 300 | [`screenshots/03-enemy-death.png`](screenshots/03-enemy-death.png) | 960x540 | HUD reports enemy 0 and score 300; the remaining broken red silhouette is the bounded death presentation rather than a live collision target |
+| Recovery state | Real Enter `Press` on visible **Reset arena** | [`screenshots/04-reset.png`](screenshots/04-reset.png) | 960x540 | Health, enemy health, score, player position, and enemy position return to the same authored seed |
 
 ## Harness and runtime evidence
 
-- Semantic query/action/wait/assert result: pending running-game task.
-- `ui_validate_layout` result and located findings: pending running-game task.
-- Independent runtime comparison and correlated frame: pending running-game task.
+- Semantic query/action/wait/assert result: the fat-JAR black-box test initialized the production
+  stdio MCP, asserted the exact harness 1.2.1 23-tool catalog, resolved exactly one accessible
+  **Start game** actor, drove Enter/W/D/Space through `ui_action`, and waited on exact screen,
+  health, enemy-health, and score text. The process exited 0 when stdin closed and its bounded
+  artifact store contained no files after session teardown.
+- `ui_validate_layout` result and located findings: [`layout-validation.json`](layout-validation.json)
+  records `PASS` over 24 nodes for all seven checks supported by the first-playable guide:
+  outside viewport, clipped text, interactive overlap, zero size, duplicate test ID, missing
+  accessible name, and obscured. There are no errors and no `CHECK_UNAVAILABLE` findings. Five
+  `OBSCURED` warnings are the documented whole-stage structural parent/internal-widget overlaps;
+  their node IDs and bounds remain in the raw result.
+- Independent runtime comparison and correlated frame: `screen`, player `health-current`, and
+  `score` each reported `EQUAL` with identical displayed/runtime frame IDs before combat, score
+  reported `EQUAL` at 300 after combat, and all original values reported `EQUAL` after reset.
+  The application captures one presentation runtime frame for every rendered UI frame without
+  advancing physics, then records the explicit correlation. A rendered-app regression overrides
+  only the displayed score and proves the comparator changes from `EQUAL` to `MISMATCH`.
+- Markup 0.5.0 identifier constraint: runtime XML identifiers accept only letters, digits,
+  hyphens, and underscores, so markup aliases are `gameplay-arena`, `gameplay-player`,
+  `gameplay-enemy`, and `health-current`. Standard gameplay runtime entities retain their
+  documented dotted runtime-only IDs such as `gameplay.entity.player`.
 - Input capability gaps: harness 1.2.1 Press is sufficient for the one-tick movement pulse and
   each Space shot; no alternate control is introduced.
 
 ## Walkthrough findings
 
-- Learnability and first objective: pending visual walkthrough.
-- Control feel and pivot: pending visual walkthrough.
-- Feedback and readability: source/atlas silhouettes inspected; running-game findings pending.
-- Failure/recovery clarity: pending visual walkthrough.
-- Reward and reason to repeat: pending visual walkthrough.
+- Learnability and first objective: the title names the objective and Enter action; the actionable
+  HUD repeats the WASD and Space controls without adding automation-only controls.
+- Control feel and pivot: W then D produces a short, immediate production-path movement pulse;
+  the centered drone pivot is stable. Harness 1.2.1 cannot evaluate sustained held-key feel, so
+  long-form tuning remains a subjective manual concern rather than an automated pass threshold.
+- Feedback and readability: teal player, crimson enemy, and cyan projectile remain distinguishable
+  over the low-contrast navy floor at 960x540. The original layer names initially placed the floor
+  over characters; original-size inspection caught it and the final lexical order is explicitly
+  background, characters, projectiles.
+- Failure/recovery clarity: reset is persistent, accessible, and visibly restores the same health,
+  score, and spatial state. Contact damage/game-over logic has deterministic tests; this evidence
+  loop captures reward and reset because three direct shots complete before enemy contact.
+- Reward and reason to repeat: enemy health counts down independently and the 300-point reward is
+  visible immediately; deterministic reset supports replaying movement and firing choices.
 
 ## Open risks and next decision
 
-- Unresolved feel or art risks: final at-scale readability and pursuit/fire balance require the
-  production-control screenshot walkthrough; they are not automated thresholds.
-- Deliberate exceptions: none recorded.
-- Smallest next change supported by this evidence: wire the markup-only HUD, running renderer,
-  harness session, runtime correlation, and stdio MCP before judging feel.
+- Unresolved feel or art risks: 32-pixel actors are intentionally compact at 960x540, and sustained
+  movement/pursuit balance still merits human playtesting; neither is converted into an arbitrary
+  automated threshold.
+- Deliberate exceptions: whole-stage `OBSCURED` warnings are retained as located diagnostics for
+  Scene2D structural parents and internal button actors; there are no actionable overlap errors.
+- Smallest next change supported by this evidence: freeze the canonical arena as the integration
+  fixture and proceed to public API documentation, isolated Maven-consumer verification, and CI.

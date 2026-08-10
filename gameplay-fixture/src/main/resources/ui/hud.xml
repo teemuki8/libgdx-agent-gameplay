@@ -3,34 +3,42 @@
   <table id="arena-ui" width="960" height="540">
     <table id="hud-bar" class="panel" width="960" height="80" fill="x" expand="x"
            pad="10" align="center center">
-      <label id="screen-label" name="Screen label" label="Screen" text="SCREEN"
-             width="64" pad="6"/>
+      <label id="screen-label" name="Screen label" label="Screen" text="SCREEN:"
+             width="62" pad="4"/>
       <label id="screen-value" name="Screen value" label="Screen" class="value"
-             text="TITLE" width="82" pad="6"
+             text="TITLE" width="62" pad="4"
              data-runtime-entity="gameplay-arena"
              data-runtime-type="arena-state"
              data-runtime-property="screen"
              data-runtime-name="Arena state"/>
-      <label id="health-label" name="Health label" label="Health" text="HEALTH"
-             width="68" pad="6"/>
+      <label id="health-label" name="Health label" label="Health" text="| HEALTH:"
+             width="82" pad="4"/>
       <label id="health-value" name="Health value" label="Health" class="value"
-             text="3" width="32" pad="6"
+             text="3" width="24" pad="4"
              data-runtime-entity="gameplay-player"
              data-runtime-type="arena-actor"
              data-runtime-property="health-current"
              data-runtime-name="Player"/>
-      <label id="score-label" name="Score label" label="Score" text="SCORE"
-             width="58" pad="6"/>
+      <label id="enemy-health-label" name="Enemy health label" label="Enemy health"
+             text="| ENEMY:" width="82" pad="4"/>
+      <label id="enemy-health-value" name="Enemy health value" label="Enemy health"
+             class="value" text="3" width="24" pad="4"
+             data-runtime-entity="gameplay-enemy"
+             data-runtime-type="arena-actor"
+             data-runtime-property="health-current"
+             data-runtime-name="Enemy"/>
+      <label id="score-label" name="Score label" label="Score" text="| SCORE:"
+             width="72" pad="4"/>
       <label id="score-value" name="Score value" label="Score" class="value"
-             text="0" width="64" pad="6"
+             text="0" width="55" pad="4"
              data-runtime-entity="gameplay-arena"
              data-runtime-type="arena-state"
              data-runtime-property="score"
              data-runtime-name="Arena state"/>
       <label id="controls-help" name="Controls" label="Controls"
-             text="WASD MOVE  |  SPACE FIRE" width="250" pad="6"/>
+             text="WASD MOVE | SPACE FIRE" width="205" pad="4"/>
       <button id="reset-button" name="Reset arena" label="Reset arena" class="primary"
-              text="Reset arena" width="132" height="44" pad="6"/>
+              text="Reset arena" width="120" height="44" pad="4"/>
     </table>
     <row/>
     <stack id="arena-overlays" width="960" height="460" fill="true" expand="true">

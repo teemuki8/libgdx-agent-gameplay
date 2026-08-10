@@ -170,7 +170,7 @@ public final class ArenaWorldFactory {
                 .with(Sprite.TYPE, new Sprite(
                         "art/arena.atlas", "arena-floor", new Vec2(960, 460),
                         new Vec2(0.5, 0.5)))
-                .with(Render.TYPE, new Render("floor", 0, Rgba.WHITE, true))
+                .with(Render.TYPE, new Render("background", 0, Rgba.WHITE, true))
                 .build();
     }
 

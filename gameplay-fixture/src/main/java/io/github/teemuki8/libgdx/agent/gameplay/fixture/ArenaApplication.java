@@ -17,6 +17,8 @@ import com.badlogic.gdx.scenes.scene2d.Group;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.InputListener;
 import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.scenes.scene2d.Touchable;
+import com.badlogic.gdx.scenes.scene2d.ui.Button;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
@@ -73,6 +75,7 @@ public final class ArenaApplication extends ApplicationAdapter {
     private FixedStepLoop fixedStep;
     private Label screenValue;
     private Label healthValue;
+    private Label enemyHealthValue;
     private Label scoreValue;
     private TextButton startButton;
     private TextButton resetButton;
@@ -137,6 +140,7 @@ public final class ArenaApplication extends ApplicationAdapter {
         uiRoot = built.root();
         sizeLayoutRoots();
         stage.addActor(uiRoot);
+        configureTouchability(stage.getRoot());
         markupRuntime = MarkupRuntimeSource.registerBindings(
                 runtime, document, built, ArenaHarness.SESSION_ID);
         resolveMarkupActors();
@@ -146,7 +150,7 @@ public final class ArenaApplication extends ApplicationAdapter {
 
         fixedStep = new FixedStepLoop(
                 Duration.ofNanos(ArenaWorldFactory.FIXED_STEP_NANOS), 5);
-        arena.world().step();
+        stepWorld();
         updateHud();
         framesLeft = smokeFrames;
         if (mcp) {
@@ -163,12 +167,17 @@ public final class ArenaApplication extends ApplicationAdapter {
 
         Duration elapsed = Duration.ofNanos(Math.max(0L,
                 Math.round(Math.min(Gdx.graphics.getDeltaTime(), 0.25f) * 1_000_000_000.0)));
-        int steps = fixedStep.advance(elapsed, () -> arena.world().step());
+        int steps = fixedStep.advance(elapsed, this::stepWorld);
+        boolean capturedRuntime = steps > 0;
         if (forceTick && steps == 0) {
-            arena.world().step();
+            stepWorld();
+            capturedRuntime = true;
         }
         forceTick = false;
         updateHud();
+        if (!capturedRuntime) {
+            captureRenderedState();
+        }
 
         float actorDelta = Math.min(Gdx.graphics.getDeltaTime(), 1f / 30f);
         stage.act(actorDelta);
@@ -254,6 +263,7 @@ public final class ArenaApplication extends ApplicationAdapter {
     private void resolveMarkupActors() {
         screenValue = requireActor("screen-value", Label.class);
         healthValue = requireActor("health-value", Label.class);
+        enemyHealthValue = requireActor("enemy-health-value", Label.class);
         scoreValue = requireActor("score-value", Label.class);
         startButton = requireActor("start-button", TextButton.class);
         resetButton = requireActor("reset-button", TextButton.class);
@@ -310,7 +320,7 @@ public final class ArenaApplication extends ApplicationAdapter {
         nativeWorld = new World(new Vector2(), true);
         arena = ArenaWorldFactory.openApplication(
                 state, nativeWorld, runtime, input, gameplayRuntime, runtimeProjection);
-        arena.world().step();
+        stepWorld();
         forceTick = false;
         titleOverlay.setVisible(false);
         gameOverOverlay.setVisible(false);
@@ -324,10 +334,16 @@ public final class ArenaApplication extends ApplicationAdapter {
                 .flatMap(entity -> entity.component(Health.TYPE))
                 .map(Health::current)
                 .orElse(0L));
+        String enemyHealth = Long.toString(arena.world().snapshot()
+                .entity(ArenaWorldFactory.ENEMY_ID)
+                .flatMap(entity -> entity.component(Health.TYPE))
+                .map(Health::current)
+                .orElse(0L));
         long displayedScore = displayedScoreOverride == null
                 ? state.score() : displayedScoreOverride;
         boolean changed = setText(screenValue, screen);
         changed |= setText(healthValue, health);
+        changed |= setText(enemyHealthValue, enemyHealth);
         changed |= setText(scoreValue, Long.toString(displayedScore));
         boolean gameOver = state.screen() == ArenaGameState.Screen.GAME_OVER;
         if (gameOverOverlay.isVisible() != gameOver) {
@@ -337,6 +353,16 @@ public final class ArenaApplication extends ApplicationAdapter {
         if (changed) {
             revision.incrementAndGet();
         }
+    }
+
+    private void stepWorld() {
+        arena.world().step();
+        revision.incrementAndGet();
+    }
+
+    private void captureRenderedState() {
+        runtime.beginFrame(ArenaWorldFactory.FIXED_STEP_NANOS);
+        runtime.endFrame();
     }
 
     private static boolean setText(Label label, String value) {
@@ -354,6 +380,35 @@ public final class ArenaApplication extends ApplicationAdapter {
                     "markup actor " + id + " is not a " + type.getSimpleName());
         }
         return type.cast(actor);
+    }
+
+    private static void configureTouchability(Actor actor) {
+        if (actor instanceof Button) {
+            actor.setTouchable(Touchable.enabled);
+            if (actor instanceof Group group) {
+                for (Actor child : group.getChildren()) {
+                    disableSubtree(child);
+                }
+            }
+            return;
+        }
+        if (actor instanceof Group group) {
+            actor.setTouchable(Touchable.childrenOnly);
+            for (Actor child : group.getChildren()) {
+                configureTouchability(child);
+            }
+        } else {
+            actor.setTouchable(Touchable.disabled);
+        }
+    }
+
+    private static void disableSubtree(Actor actor) {
+        actor.setTouchable(Touchable.disabled);
+        if (actor instanceof Group group) {
+            for (Actor child : group.getChildren()) {
+                disableSubtree(child);
+            }
+        }
     }
 
     private void sizeLayoutRoots() {
