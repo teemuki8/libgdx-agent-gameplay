@@ -423,6 +423,18 @@ public final class GameWorld implements AutoCloseable {
         }
 
         @Override
+        public WorldSnapshot snapshot() {
+            requireValid();
+            return snapshotInternal(GameWorld.this.tick);
+        }
+
+        @Override
+        public List<EventEnvelope> events() {
+            requireValid();
+            return eventBuffer.currentEvents();
+        }
+
+        @Override
         public void emit(GameplayEvent event) {
             requireValid();
             eventBuffer.emit(event);

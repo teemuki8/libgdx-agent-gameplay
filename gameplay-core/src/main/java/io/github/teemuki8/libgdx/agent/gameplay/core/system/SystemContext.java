@@ -5,9 +5,11 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.component.Component;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.ComponentType;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EventAttributes;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.GameplayEvent;
+import io.github.teemuki8.libgdx.agent.gameplay.core.event.EventEnvelope;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId;
 import io.github.teemuki8.libgdx.agent.gameplay.core.world.EntityDraft;
 import io.github.teemuki8.libgdx.agent.gameplay.core.world.EntityView;
+import io.github.teemuki8.libgdx.agent.gameplay.core.world.WorldSnapshot;
 import java.util.List;
 
 /** Phase-scoped view and mutation surface supplied to a game system. */
@@ -29,6 +31,12 @@ public interface SystemContext {
 
     /** Returns the immutable commands targeted at this tick. */
     List<CommandEnvelope> commands();
+
+    /** Returns an immutable snapshot of authoritative state at this exact phase. */
+    WorldSnapshot snapshot();
+
+    /** Returns immutable gameplay events emitted so far in this tick. */
+    List<EventEnvelope> events();
 
     /** Emits an event without attributes. */
     void emit(GameplayEvent event);

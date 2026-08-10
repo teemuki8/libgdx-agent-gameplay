@@ -69,6 +69,16 @@ public final class EventBuffer {
         return completed;
     }
 
+    /** Returns immutable events staged in the currently open tick. */
+    public List<EventEnvelope> currentEvents() {
+        if (openTick < 0) {
+            throw failure(GameplayDiagnosticCode.EVENT_TICK_NOT_OPEN,
+                    "an open simulation tick", "closed",
+                    "Read current events only from an active system callback.");
+        }
+        return List.copyOf(events);
+    }
+
     /** Clears open and completed state at a world reset boundary. */
     public void reset() {
         events.clear();
