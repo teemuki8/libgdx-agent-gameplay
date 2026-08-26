@@ -1,13 +1,17 @@
 package io.github.teemuki8.libgdx.agent.gameplay.box2d;
 
+import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.Contact;
 import com.badlogic.gdx.physics.box2d.ContactImpulse;
 import com.badlogic.gdx.physics.box2d.ContactListener;
 import com.badlogic.gdx.physics.box2d.Fixture;
+import com.badlogic.gdx.physics.box2d.Joint;
 import com.badlogic.gdx.physics.box2d.Manifold;
 import com.badlogic.gdx.physics.box2d.World;
+import com.badlogic.gdx.physics.box2d.joints.RevoluteJoint;
+import com.badlogic.gdx.physics.box2d.joints.RevoluteJointDef;
 import io.github.teemuki8.libgdx.agent.gameplay.core.GameplayLimits;
 import io.github.teemuki8.libgdx.agent.gameplay.core.command.MoveCommand;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Collider;
@@ -67,6 +71,7 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
     private final ContactListener runtimeContactListener;
     private final ContactListener evidenceListener;
     private final Map<EntityId, Box2dBodyHandle> bodies = new TreeMap<>();
+    private final Map<Box2dJointId, OwnedRevoluteJoint> joints = new TreeMap<>();
     private final List<GameSystem> systems;
     private List<GameplayEvent> pendingContacts = List.of();
     private boolean captureRuntimeContacts;
@@ -136,6 +141,146 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
         requireOwnerOpen("read-box2d-body-state");
         Box2dBodyHandle handle = bodies.get(Objects.requireNonNull(entityId, "entityId"));
         return handle == null ? Optional.empty() : Optional.of(handle.state(units));
+    }
+
+    /**
+     * Creates and inspects one bounded revolute joint using copied stable IDs and values.
+     *
+     * @param spec immutable joint specification in render units and radians
+     */
+    public void createRevoluteJoint(Box2dRevoluteJointSpec spec) {
+        requireOwnerOpen("create-revolute-joint");
+        Box2dRevoluteJointSpec checked = Objects.requireNonNull(spec, "spec");
+        requireWorldUnlocked("create-revolute-joint");
+        if (joints.containsKey(checked.id())) {
+            throw failure(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    "unique bridge-owned joint ID", checked.id().value(),
+                    "Remove the existing joint before reusing its stable ID.");
+        }
+        int maximum = inspection.limits().joints();
+        if (joints.size() >= maximum) {
+            throw failure(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    "at most " + maximum + " inspected physics joints",
+                    Integer.toString(joints.size() + 1),
+                    "Remove a bridge-owned joint before creating another.");
+        }
+        Box2dBodyHandle first = requireDynamicJointEndpoint(checked.first());
+        Box2dBodyHandle second = requireDynamicJointEndpoint(checked.second());
+        if (first == second) {
+            throw failure(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    "distinct native joint endpoints", checked.first().value(),
+                    "Supply two distinct mapped dynamic bodies.");
+        }
+
+        RevoluteJointDef definition = new RevoluteJointDef();
+        definition.initialize(first.body(), second.body(), new Vector2(
+                units.toPhysicsFloat(
+                        checked.anchorRenderUnits().x(), "joint.anchorRenderUnits.x"),
+                units.toPhysicsFloat(
+                        checked.anchorRenderUnits().y(), "joint.anchorRenderUnits.y")));
+        definition.enableLimit = true;
+        definition.lowerAngle = finiteFloat(
+                checked.lowerAngleRadians(), "joint.lowerAngleRadians");
+        definition.upperAngle = finiteFloat(
+                checked.upperAngleRadians(), "joint.upperAngleRadians");
+        definition.collideConnected = checked.collideConnected();
+
+        Joint nativeJoint = world.createJoint(definition);
+        if (!(nativeJoint instanceof RevoluteJoint revoluteJoint)) {
+            world.destroyJoint(nativeJoint);
+            throw failure(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    "native revolute joint", nativeJoint.getClass().getName(),
+                    "Use the bridge revolute-joint creation path with the supported binding.");
+        }
+        Box2dRegistration<Joint> registration = null;
+        try {
+            registration = inspection.registerJoint(
+                    checked.id().value(), WORLD_ID, nativeJoint);
+            joints.put(checked.id(), new OwnedRevoluteJoint(
+                    checked.id(), checked.first(), checked.second(),
+                    revoluteJoint, registration));
+        } catch (RuntimeException | Error failure) {
+            if (registration != null) {
+                registration.close();
+            }
+            world.destroyJoint(nativeJoint);
+            throw failure;
+        }
+    }
+
+    /**
+     * Configures the motor of one bridge-owned revolute joint.
+     *
+     * @param id stable joint ID
+     * @param motor immutable motor configuration
+     */
+    public void configureRevoluteMotor(Box2dJointId id, Box2dRevoluteMotor motor) {
+        requireOwnerOpen("configure-revolute-motor");
+        requireWorldUnlocked("configure-revolute-motor");
+        RevoluteJoint joint = requireRevoluteJoint(id);
+        Box2dRevoluteMotor checked = Objects.requireNonNull(motor, "motor");
+        float speed = finiteFloat(
+                checked.speedRadiansPerSecond(), "motor.speedRadiansPerSecond");
+        float torque = finiteFloat(
+                checked.maximumTorqueNewtonMetres(), "motor.maximumTorqueNewtonMetres");
+        joint.setMotorSpeed(speed);
+        joint.setMaxMotorTorque(torque);
+        joint.enableMotor(checked.enabled());
+    }
+
+    /**
+     * Applies a copied Box2D SI force at a mapped non-static body's centre and wakes it.
+     *
+     * @param entityId mapped gameplay entity
+     * @param forceNewtons force in newtons, without render-unit conversion
+     */
+    public void applyForceToCenter(EntityId entityId, Vec2 forceNewtons) {
+        requireOwnerOpen("apply-force-to-center");
+        requireWorldUnlocked("apply-force-to-center");
+        Box2dBodyHandle handle = requireHandle(entityId);
+        Vec2 checked = Objects.requireNonNull(forceNewtons, "forceNewtons");
+        if (handle.bodyType() == BodyDef.BodyType.StaticBody || !handle.body().isActive()) {
+            throw failure(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    "active non-static mapped body", entityId.value(),
+                    "Apply force only to an active dynamic or kinematic mapped body.");
+        }
+        handle.body().applyForceToCenter(
+                finiteFloat(checked.x(), "forceNewtons.x"),
+                finiteFloat(checked.y(), "forceNewtons.y"), true);
+    }
+
+    /**
+     * Returns copied revolute-joint state without exposing native identity.
+     *
+     * @param id stable joint ID
+     * @return copied state, or empty when the ID is not bridge-owned
+     */
+    public Optional<Box2dRevoluteJointState> revoluteJointState(Box2dJointId id) {
+        requireOwnerOpen("read-revolute-joint-state");
+        Box2dJointId checked = Objects.requireNonNull(id, "id");
+        OwnedRevoluteJoint owned = joints.get(checked);
+        if (owned == null) {
+            return Optional.empty();
+        }
+        RevoluteJoint joint = checkedRevoluteJoint(owned);
+        return Optional.of(new Box2dRevoluteJointState(
+                owned.id(), owned.first(), owned.second(),
+                joint.getJointAngle(), joint.getJointSpeed(), joint.isMotorEnabled(),
+                joint.getMotorSpeed(), joint.getMaxMotorTorque()));
+    }
+
+    /**
+     * Removes one bridge-owned joint; an absent ID is already removed.
+     *
+     * @param id stable joint ID
+     */
+    public void removeJoint(Box2dJointId id) {
+        requireOwnerOpen("remove-box2d-joint");
+        requireWorldUnlocked("remove-box2d-joint");
+        OwnedRevoluteJoint owned = joints.remove(Objects.requireNonNull(id, "id"));
+        if (owned != null) {
+            destroyJoint(owned);
+        }
     }
 
     /** Deactivates one mapped body at an authoritative gameplay transition. */
@@ -218,6 +363,7 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
     @Override
     public void onDispose(EntityId entityId) {
         requireOwnerOpen("dispose-box2d-body");
+        destroyConnectedJoints(Objects.requireNonNull(entityId, "entityId"));
         Box2dBodyHandle handle = bodies.remove(entityId);
         if (handle != null) {
             Box2dNativeDisposal.destroy(world, handle);
@@ -227,6 +373,7 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
     @Override
     public void onReset() {
         requireOwnerOpen("reset-box2d-bridge");
+        destroyAllJoints();
         contacts.reset();
         pendingContacts = List.of();
     }
@@ -243,6 +390,8 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
         if (closed) {
             return;
         }
+        requireWorldUnlocked("close-box2d-bridge");
+        destroyAllJoints();
         ArrayList<Box2dBodyHandle> remaining = new ArrayList<>(bodies.values());
         Collections.reverse(remaining);
         remaining.forEach(handle -> Box2dNativeDisposal.destroy(world, handle));
@@ -326,6 +475,76 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
         pendingContacts = List.of();
     }
 
+    private Box2dBodyHandle requireDynamicJointEndpoint(EntityId entityId) {
+        Box2dBodyHandle handle = requireHandle(entityId);
+        if (handle.bodyType() == BodyDef.BodyType.StaticBody) {
+            throw failure(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    "non-static mapped joint endpoint", entityId.value(),
+                    "Join only dynamic or kinematic bridge-owned bodies.");
+        }
+        return handle;
+    }
+
+    private RevoluteJoint requireRevoluteJoint(Box2dJointId id) {
+        Box2dJointId checked = Objects.requireNonNull(id, "id");
+        OwnedRevoluteJoint owned = joints.get(checked);
+        if (owned == null) {
+            throw failure(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    "bridge-owned revolute joint", checked.value(),
+                    "Create the stable joint ID before configuring its motor.");
+        }
+        return checkedRevoluteJoint(owned);
+    }
+
+    private RevoluteJoint checkedRevoluteJoint(OwnedRevoluteJoint owned) {
+        Joint joint = owned.joint();
+        if (!(joint instanceof RevoluteJoint revoluteJoint)) {
+            throw failure(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    "bridge-owned revolute joint", joint.getClass().getName(),
+                    "Do not replace bridge-owned native joint identity.");
+        }
+        return revoluteJoint;
+    }
+
+    private void destroyConnectedJoints(EntityId entityId) {
+        List<Box2dJointId> connected = joints.values().stream()
+                .filter(joint -> joint.first().equals(entityId)
+                        || joint.second().equals(entityId))
+                .map(OwnedRevoluteJoint::id)
+                .toList();
+        connected.forEach(id -> destroyJoint(joints.remove(id)));
+    }
+
+    private void destroyAllJoints() {
+        ArrayList<OwnedRevoluteJoint> remaining = new ArrayList<>(joints.values());
+        Collections.reverse(remaining);
+        remaining.forEach(this::destroyJoint);
+        joints.clear();
+    }
+
+    private void destroyJoint(OwnedRevoluteJoint owned) {
+        owned.registration().close();
+        world.destroyJoint(owned.joint());
+    }
+
+    private void requireWorldUnlocked(String operation) {
+        if (world.isLocked()) {
+            throw failure(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    "unlocked application-owned Box2D world", operation,
+                    "Schedule native mutation outside World.step callbacks.");
+        }
+    }
+
+    private static float finiteFloat(double value, String field) {
+        float narrowed = (float) value;
+        if (!Double.isFinite(value) || !Float.isFinite(narrowed)) {
+            throw failure(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    "finite float-representable " + field, Double.toString(value),
+                    "Supply a finite value representable by the Box2D binding.");
+        }
+        return narrowed;
+    }
+
     private void requireOwnerOpen(String operation) {
         requireOwner(operation);
         if (closed) {
@@ -376,6 +595,21 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
             String correction) {
         return GameplayException.validation(
                 code, "operate-box2d-bridge", expected, observed, correction);
+    }
+
+    private record OwnedRevoluteJoint(
+            Box2dJointId id,
+            EntityId first,
+            EntityId second,
+            Joint joint,
+            Box2dRegistration<Joint> registration) {
+        private OwnedRevoluteJoint {
+            Objects.requireNonNull(id, "id");
+            Objects.requireNonNull(first, "first");
+            Objects.requireNonNull(second, "second");
+            Objects.requireNonNull(joint, "joint");
+            Objects.requireNonNull(registration, "registration");
+        }
     }
 
     private final class PrePhysicsSystem implements GameSystem {

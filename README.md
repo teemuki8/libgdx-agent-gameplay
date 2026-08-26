@@ -37,9 +37,14 @@ apply.
   fixed-step presentation support.
 - `io.github.teemuki8:gameplay-runtime` — typed agent-runtime entity, event, visual, and correlation
   projections.
-- `io.github.teemuki8:gameplay-box2d` — owner-thread Box2D authority, contact evidence, inspection,
-  and explicit render-unit conversion.
+- `io.github.teemuki8:gameplay-box2d` — owner-thread Box2D authority, copied collision-impact
+  evidence, bounded private-identity revolute joints/body forces, inspection, and explicit
+  render-unit conversion. Native bodies, fixtures, and joints never cross the bridge API.
 - `gameplay-fixture` is the markup/harness qualification application and is not published.
+
+The Box2D adapter reports positive normal impulses as immutable `CollisionImpact` events. Its
+joint/force API accepts stable IDs and copied values only: joint anchors use render units, while
+forces, motor torque/speed, and angular limits use Box2D SI units/radians.
 
 No Maven Central release has been authorized. Local publication qualification uses
 `0.1.0-SNAPSHOT`; consumers should select an actual Central version once one exists.
