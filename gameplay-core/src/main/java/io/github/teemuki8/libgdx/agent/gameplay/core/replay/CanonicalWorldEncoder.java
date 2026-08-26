@@ -19,6 +19,7 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform2D;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnosticCode;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.DamageApplied;
+import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionImpact;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionEnded;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionStarted;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EntityDespawned;
@@ -247,6 +248,11 @@ public final class CanonicalWorldEncoder {
             writer.text("objective-completed");
             writer.text(objective.subject().value());
             writer.text(objective.objectiveId());
+        } else if (event instanceof CollisionImpact impact) {
+            writer.text("collision-impact");
+            collision(writer, impact.first().value(), impact.second().value(),
+                    impact.firstFixtureId(), impact.secondFixtureId());
+            writer.decimal(impact.normalImpulse());
         } else if (event instanceof CollisionStarted collision) {
             writer.text("collision-started");
             collision(writer, collision.first().value(), collision.second().value(),

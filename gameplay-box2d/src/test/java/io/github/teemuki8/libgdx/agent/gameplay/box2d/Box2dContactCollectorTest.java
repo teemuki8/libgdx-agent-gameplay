@@ -14,13 +14,17 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.GameplayLimits;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.StandardComponents;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnosticCode;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
+import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionImpact;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionStarted;
+import io.github.teemuki8.libgdx.agent.gameplay.core.event.GameplayEvent;
 import io.github.teemuki8.libgdx.agent.gameplay.core.world.GameWorld;
 import io.github.teemuki8.libgdx.agent.runtime.core.AgentRuntime;
 import io.github.teemuki8.libgdx.agent.runtime.core.RuntimeValue;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 final class Box2dContactCollectorTest {
     @BeforeAll
@@ -66,18 +70,86 @@ final class Box2dContactCollectorTest {
     }
 
     @Test
-    void overflowFromRealCallbacksIsTypedInsteadOfTruncated() {
+    void impactSharesTheSingleCallbackBoundAndFailsInsteadOfTruncating() {
         World nativeWorld = new World(new Vector2(), true);
         Box2dContactCollector collector = new Box2dContactCollector(1);
         Box2dBodyFactory bodies = Box2dTestSupport.dynamicBodies();
-        bodies.create(nativeWorld, view(Box2dTestSupport.body("alpha", 0, 0)));
-        bodies.create(nativeWorld, view(Box2dTestSupport.body("beta", 0, 0)));
-        bodies.create(nativeWorld, view(Box2dTestSupport.body("gamma", 0, 0)));
+        Box2dBodyHandle alpha =
+                bodies.create(nativeWorld, view(Box2dTestSupport.body("alpha", 0, 32)));
+        Box2dBodyHandle beta =
+                bodies.create(nativeWorld, view(Box2dTestSupport.body("beta", 96, 32)));
+        alpha.body().setLinearVelocity(2, 0);
+        beta.body().setLinearVelocity(-2, 0);
         nativeWorld.setContactListener(collector.listener());
 
-        GameplayException failure = assertThrows(GameplayException.class,
-                () -> collector.captureStep(() -> nativeWorld.step(1f / 60f, 6, 2)));
+        GameplayException failure = assertThrows(GameplayException.class, () -> {
+            for (int step = 0; step < 90; step++) {
+                collector.captureStep(() -> nativeWorld.step(1f / 60f, 6, 2));
+            }
+        });
         assertEquals(GameplayDiagnosticCode.BOX2D_CONTACT_LIMIT_EXCEEDED, failure.code());
+        nativeWorld.dispose();
+    }
+
+    @Test
+    void postSolveImmediatelyCopiesTheMaximumNormalImpulse() {
+        World nativeWorld = new World(new Vector2(), true);
+        Box2dContactCollector collector = new Box2dContactCollector(8);
+        Box2dBodyFactory bodies = Box2dTestSupport.dynamicBodies();
+        Box2dBodyHandle zeta =
+                bodies.create(nativeWorld, view(Box2dTestSupport.body("zeta", 96, 32)));
+        Box2dBodyHandle alpha =
+                bodies.create(nativeWorld, view(Box2dTestSupport.body("alpha", 0, 32)));
+        zeta.body().setLinearVelocity(-2, 0);
+        alpha.body().setLinearVelocity(2, 0);
+        AtomicReference<Double> callbackMaximum = new AtomicReference<>();
+        nativeWorld.setContactListener(collector.compose(impulseListener(callbackMaximum, null)));
+
+        CollisionImpact copied = null;
+        List<GameplayEvent> copiedEvents = List.of();
+        for (int step = 0; step < 90 && copied == null; step++) {
+            List<GameplayEvent> events =
+                    collector.captureStep(
+                            () -> nativeWorld.step(1f / 60f, 6, 2));
+            copied = events.stream()
+                    .filter(CollisionImpact.class::isInstance)
+                    .map(CollisionImpact.class::cast)
+                    .findFirst()
+                    .orElse(null);
+            if (copied != null) {
+                copiedEvents = events;
+            }
+        }
+
+        assertNotNull(copied);
+        assertEquals("alpha.collider", copied.firstFixtureId());
+        assertEquals("zeta.collider", copied.secondFixtureId());
+        assertEquals(callbackMaximum.get(), copied.normalImpulse());
+        assertEquals(List.of(CollisionStarted.class, CollisionImpact.class),
+                copiedEvents.stream().map(Object::getClass).toList());
+        nativeWorld.dispose();
+    }
+
+    @Test
+    void nativeCallbacksOutsideActiveCaptureDoNotLeakIntoTheNextStep() {
+        World nativeWorld = new World(new Vector2(), true);
+        Box2dContactCollector collector = new Box2dContactCollector(8);
+        Box2dBodyFactory bodies = Box2dTestSupport.dynamicBodies();
+        Box2dBodyHandle alpha =
+                bodies.create(nativeWorld, view(Box2dTestSupport.body("alpha", 32, 32)));
+        Box2dBodyHandle beta =
+                bodies.create(nativeWorld, view(Box2dTestSupport.body("beta", 32, 32)));
+        AtomicInteger nativePosts = new AtomicInteger();
+        nativeWorld.setContactListener(collector.compose(
+                impulseListener(new AtomicReference<>(), nativePosts)));
+
+        nativeWorld.step(1f / 60f, 6, 2);
+        alpha.body().setActive(false);
+        beta.body().setActive(false);
+
+        assertEquals(0, collector.captureStep(
+                () -> nativeWorld.step(1f / 60f, 6, 2)).size());
+        assertEquals(1, nativePosts.get());
         nativeWorld.dispose();
     }
 
@@ -176,6 +248,31 @@ final class Box2dContactCollectorTest {
             }
 
             @Override public void postSolve(Contact contact, ContactImpulse impulse) {
+            }
+        };
+    }
+
+    private static ContactListener impulseListener(
+            AtomicReference<Double> maximum, AtomicInteger posts) {
+        return new ContactListener() {
+            @Override public void beginContact(Contact contact) {
+            }
+
+            @Override public void endContact(Contact contact) {
+            }
+
+            @Override public void preSolve(Contact contact, Manifold oldManifold) {
+            }
+
+            @Override public void postSolve(Contact contact, ContactImpulse impulse) {
+                double copiedMaximum = 0.0;
+                for (float value : impulse.getNormalImpulses()) {
+                    copiedMaximum = Math.max(copiedMaximum, value);
+                }
+                maximum.set(copiedMaximum);
+                if (posts != null) {
+                    posts.incrementAndGet();
+                }
             }
         };
     }

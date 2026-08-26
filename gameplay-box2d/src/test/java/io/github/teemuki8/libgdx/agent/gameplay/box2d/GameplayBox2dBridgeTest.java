@@ -1,11 +1,13 @@
 package io.github.teemuki8.libgdx.agent.gameplay.box2d;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.World;
 import io.github.teemuki8.libgdx.agent.gameplay.core.GameplayLimits;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.StandardComponents;
+import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionImpact;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId;
 import io.github.teemuki8.libgdx.agent.gameplay.core.world.GameWorld;
 import io.github.teemuki8.libgdx.agent.runtime.core.AgentRuntime;
@@ -49,6 +51,51 @@ final class GameplayBox2dBridgeTest {
         assertEquals(0, nativeWorld.getBodyCount());
         nativeWorld.createBody(new com.badlogic.gdx.physics.box2d.BodyDef());
         assertEquals(1, nativeWorld.getBodyCount());
+        bridge.close();
+        runtime.close();
+        nativeWorld.dispose();
+    }
+
+    @Test
+    void realNativeWorldEmitsCopiedCollisionImpactThroughTheBridge() {
+        World nativeWorld = new World(new Vector2(), true);
+        AgentRuntime runtime = AgentRuntime.builder().build();
+        GameplayBox2dBridge bridge = Box2dTestSupport.bridge(nativeWorld, runtime);
+        GameWorld.Builder builder = GameWorld.builder(
+                        GameplayLimits.defaults(), StandardComponents.registry())
+                .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
+                .initializer(sink -> {
+                    sink.spawn(Box2dTestSupport.body("alpha", 0, 32));
+                    sink.spawn(Box2dTestSupport.body("beta", 96, 32));
+                })
+                .lifecycleParticipant(bridge);
+        bridge.systems().forEach(builder::system);
+        nativeWorld.setContactListener(bridge.contactListener());
+        runtime.start();
+
+        CollisionImpact copied = null;
+        try (GameWorld world = builder.build()) {
+            world.step();
+            bridge.handle(EntityId.of("alpha")).orElseThrow()
+                    .body().setLinearVelocity(2, 0);
+            bridge.handle(EntityId.of("beta")).orElseThrow()
+                    .body().setLinearVelocity(-2, 0);
+            for (int step = 0; step < 90 && copied == null; step++) {
+                copied = world.step().events().stream()
+                        .map(envelope -> envelope.event())
+                        .filter(CollisionImpact.class::isInstance)
+                        .map(CollisionImpact.class::cast)
+                        .findFirst()
+                        .orElse(null);
+            }
+        }
+
+        assertNotNull(copied);
+        assertEquals(EntityId.of("alpha"), copied.first());
+        assertEquals(EntityId.of("beta"), copied.second());
+        assertEquals("alpha.collider", copied.firstFixtureId());
+        assertEquals("beta.collider", copied.secondFixtureId());
+        assertEquals(true, copied.normalImpulse() > 0.0);
         bridge.close();
         runtime.close();
         nativeWorld.dispose();

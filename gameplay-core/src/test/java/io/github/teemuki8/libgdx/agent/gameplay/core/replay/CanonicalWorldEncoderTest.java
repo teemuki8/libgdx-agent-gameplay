@@ -1,6 +1,7 @@
 package io.github.teemuki8.libgdx.agent.gameplay.core.replay;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -12,6 +13,7 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnost
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EntitySpawned;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionEnded;
+import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionImpact;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionStarted;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EventAttributeValue;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EventAttributes;
@@ -97,6 +99,46 @@ final class CanonicalWorldEncoderTest {
         assertNotEquals(
                 CanonicalWorldEncoder.defaults().digestEvents(4, List.of(started)),
                 CanonicalWorldEncoder.defaults().digestEvents(4, List.of(ended)));
+    }
+
+    @Test
+    void collisionImpactHasValidatedSortedEndpointsAndCanonicalImpulseEvidence() {
+        EntityId alpha = EntityId.of("alpha");
+        EntityId beta = EntityId.of("beta");
+        CollisionImpact impact =
+                new CollisionImpact(alpha, beta, "alpha.collider", "beta.collider", 3.25);
+        EventEnvelope envelope =
+                new EventEnvelope(4, 0, impact, EventAttributes.empty());
+        CanonicalWorldEncoder encoder = CanonicalWorldEncoder.defaults();
+
+        assertEquals(alpha, impact.first());
+        assertEquals(beta, impact.second());
+        assertArrayEquals(
+                encoder.encodeEvents(4, List.of(envelope)),
+                encoder.encodeEvents(4, List.of(envelope)));
+        assertEquals(
+                "58f7eea24e092378bbf4e8da1f2186e1acb670a92df386536752fdf182b06fd2",
+                encoder.digestEvents(4, List.of(envelope)).sha256());
+        assertNotEquals(
+                encoder.digestEvents(4, List.of(envelope)),
+                encoder.digestEvents(4, List.of(new EventEnvelope(
+                        4, 0,
+                        new CollisionImpact(
+                                alpha, beta, "alpha.collider", "beta.collider", 3.5),
+                        EventAttributes.empty()))));
+
+        GameplayException unsorted = assertThrows(GameplayException.class,
+                () -> new CollisionImpact(
+                        beta, alpha, "beta.collider", "alpha.collider", 3.25));
+        assertEquals(GameplayDiagnosticCode.INVALID_COMPONENT_VALUE, unsorted.code());
+        GameplayException nonFinite = assertThrows(GameplayException.class,
+                () -> new CollisionImpact(
+                        alpha, beta, "alpha.collider", "beta.collider", Double.NaN));
+        assertEquals(GameplayDiagnosticCode.INVALID_COMPONENT_VALUE, nonFinite.code());
+        GameplayException nonPositive = assertThrows(GameplayException.class,
+                () -> new CollisionImpact(
+                        alpha, beta, "alpha.collider", "beta.collider", 0.0));
+        assertEquals(GameplayDiagnosticCode.INVALID_COMPONENT_VALUE, nonPositive.code());
     }
 
     private static WorldSnapshot snapshot(Transform2D transform) {

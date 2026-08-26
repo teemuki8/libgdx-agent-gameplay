@@ -8,6 +8,7 @@ import com.badlogic.gdx.physics.box2d.Manifold;
 import io.github.teemuki8.libgdx.agent.gameplay.core.GameplayLimits;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnosticCode;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
+import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionImpact;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionEnded;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionStarted;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.GameplayEvent;
@@ -17,7 +18,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
-/** Preallocated bounded copy-out queue for native begin/end contact callbacks. */
+/** Preallocated bounded copy-out queue for native contact callbacks. */
 public final class Box2dContactCollector {
     private static final Comparator<ContactFact> ORDER = Comparator
             .comparing(ContactFact::firstFixtureId)
@@ -73,11 +74,18 @@ public final class Box2dContactCollector {
             ArrayList<GameplayEvent> events = new ArrayList<>(count);
             for (int index = 0; index < count; index++) {
                 ContactFact fact = records[index];
-                events.add(fact.phase() == ContactPhase.STARTED
-                        ? new CollisionStarted(fact.firstEntity(), fact.secondEntity(),
-                                fact.firstFixtureId(), fact.secondFixtureId())
-                        : new CollisionEnded(fact.firstEntity(), fact.secondEntity(),
-                                fact.firstFixtureId(), fact.secondFixtureId()));
+                events.add(switch (fact.phase()) {
+                    case STARTED -> new CollisionStarted(
+                            fact.firstEntity(), fact.secondEntity(),
+                            fact.firstFixtureId(), fact.secondFixtureId());
+                    case IMPACT -> new CollisionImpact(
+                            fact.firstEntity(), fact.secondEntity(),
+                            fact.firstFixtureId(), fact.secondFixtureId(),
+                            fact.normalImpulse());
+                    case ENDED -> new CollisionEnded(
+                            fact.firstEntity(), fact.secondEntity(),
+                            fact.firstFixtureId(), fact.secondFixtureId());
+                });
             }
             return List.copyOf(events);
         } finally {
@@ -125,7 +133,7 @@ public final class Box2dContactCollector {
         };
     }
 
-    private void record(Contact contact, ContactPhase phase) {
+    private void record(Contact contact, ContactPhase phase, double normalImpulse) {
         if (!capturing) {
             return;
         }
@@ -138,7 +146,7 @@ public final class Box2dContactCollector {
             throw GameplayException.validation(
                     GameplayDiagnosticCode.BOX2D_CONTACT_LIMIT_EXCEEDED,
                     "capture-box2d-contacts",
-                    "at most " + records.length + " begin/end callbacks per native step",
+                    "at most " + records.length + " contact callbacks per native step",
                     Integer.toString(count + 1),
                     "Raise the application-lowered bound or reduce collision production.");
         }
@@ -149,7 +157,7 @@ public final class Box2dContactCollector {
         }
         records[count++] = new ContactFact(
                 phase, first.entityId(), second.entityId(),
-                first.fixtureId(), second.fixtureId());
+                first.fixtureId(), second.fixtureId(), normalImpulse);
     }
 
     private static Endpoint endpoint(Fixture fixture) {
@@ -162,22 +170,30 @@ public final class Box2dContactCollector {
 
     private final class EvidenceListener implements ContactListener {
         @Override public void beginContact(Contact contact) {
-            record(contact, ContactPhase.STARTED);
+            record(contact, ContactPhase.STARTED, 0.0);
         }
 
         @Override public void endContact(Contact contact) {
-            record(contact, ContactPhase.ENDED);
+            record(contact, ContactPhase.ENDED, 0.0);
         }
 
         @Override public void preSolve(Contact contact, Manifold oldManifold) {
         }
 
         @Override public void postSolve(Contact contact, ContactImpulse impulse) {
+            double maximum = 0.0;
+            for (float normalImpulse : impulse.getNormalImpulses()) {
+                maximum = Math.max(maximum, normalImpulse);
+            }
+            if (maximum > 0.0) {
+                record(contact, ContactPhase.IMPACT, maximum);
+            }
         }
     }
 
     private enum ContactPhase {
         STARTED,
+        IMPACT,
         ENDED
     }
 
@@ -191,6 +207,7 @@ public final class Box2dContactCollector {
             io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId firstEntity,
             io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId secondEntity,
             String firstFixtureId,
-            String secondFixtureId) {
+            String secondFixtureId,
+            double normalImpulse) {
     }
 }

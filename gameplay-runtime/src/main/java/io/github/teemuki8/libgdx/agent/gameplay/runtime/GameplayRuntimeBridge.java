@@ -6,6 +6,7 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.component.ComponentType;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnosticCode;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.DamageApplied;
+import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionImpact;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionEnded;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionStarted;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EntityDespawned;
@@ -334,6 +335,11 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
             return EventSpec.type("gameplay.objective-completed")
                     .subject(runtimeEntityId("gameplay.entity." + objective.subject().value()))
                     .attribute("objectiveId", RuntimeValues.string(objective.objectiveId()));
+        }
+        if (event instanceof CollisionImpact impact) {
+            return collisionSpec("gameplay.collision-impact", impact.first(),
+                    impact.second(), impact.firstFixtureId(), impact.secondFixtureId())
+                    .attribute("normalImpulse", RuntimeValues.decimal(impact.normalImpulse()));
         }
         if (event instanceof CollisionStarted collision) {
             return collisionSpec("gameplay.collision-started", collision.first(),
