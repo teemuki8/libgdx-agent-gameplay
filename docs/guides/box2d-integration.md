@@ -6,22 +6,32 @@ installed contact listener. Create `GameplayBox2dBridge` on the world owner thre
 runtime, and gameplay limits. Add the bridge as a lifecycle participant and add all three returned
 systems.
 
-The bridge creates and owns only bodies/fixtures corresponding to active gameplay entities. It
-applies movement intent in `PRE_PHYSICS`, steps the native world in `PHYSICS`, and copies native
-position/velocity authority back in `POST_PHYSICS`. Contact callbacks enqueue stable fixture
-endpoints; gameplay consumes the bounded event list after the step.
+The bridge creates and owns only bodies/fixtures corresponding to active gameplay entities plus
+revolute joints explicitly created through copied-value specifications. It applies movement intent
+in `PRE_PHYSICS`, steps the native world in `PHYSICS`, and copies native position/velocity authority
+back in `POST_PHYSICS`. Contact callbacks immediately copy stable fixture endpoints and the maximum
+positive normal impulse. Gameplay consumes bounded `CollisionStarted`, `CollisionEnded`, and
+`CollisionImpact` events after the step; no callback-owned object is retained.
 
-Native `Body` and `Fixture` identities never leave the bridge. Use `bodyState(entityId)` for an
-immutable copied position, velocity, collider declaration, stable IDs, and active state. Narrow
-semantic transitions such as `stop` and `deactivate` remain owner-thread checked bridge operations;
-controller intent still enters only through ordered commands.
+Native `Body`, `Fixture`, and `Joint` identities never leave the bridge. Use `bodyState(entityId)`
+and `revoluteJointState(jointId)` for immutable copied state. Create joints with
+`Box2dRevoluteJointSpec`, configure them with `Box2dRevoluteMotor`, apply Box2D SI newtons through
+`applyForceToCenter`, and remove them by stable `Box2dJointId`. Anchors use render units and pass
+through the declared unit conversion; force, angular speed, torque, and angular limits use Box2D SI
+units/radians directly. All operations are owner-thread checked, bounded by inspection limits, and
+resolve private native handles internally. Controller intent still enters only through ordered
+commands.
 
 Install `bridge.contactListener()` or `bridge.composeContactListener(applicationListener)` on the
 world. Do not replace it later without equivalent explicit composition. The evidence listener runs
 first so application callback failure cannot erase inspection evidence.
 
-Use one declared render-units-per-metre conversion everywhere. Collider sizes and positions enter
-Box2D through `toPhysicsUnits`; body positions and velocities return through `toRenderUnits`.
-Close the gameplay world/bridge before disposing the native world, and unregister runtime
-inspection before native destruction. Reset fixtures by rebuilding the native world when exact
-replay reset is required; Box2D broadphase history is not authoritative reusable state.
+Use one declared render-units-per-metre conversion everywhere. Collider sizes, positions, and joint
+anchors enter Box2D through `toPhysicsUnits`; body positions and velocities return through
+`toRenderUnits`. Joint inspection appears under `box2d.joint.<stable-id>`.
+
+Close the gameplay world/bridge before disposing the native world. The bridge closes joint
+inspection registrations and destroys its joints before unregistering and destroying endpoint
+bodies; it never disposes the application-owned world. Reset uses the same joint-before-body
+lifecycle boundary. Rebuild the native world when exact replay reset is required because Box2D
+broadphase history is not authoritative reusable state.
