@@ -5,7 +5,7 @@ agent-runtime = "2.1.0"
 harness = "1.2.1"
 markup = "0.5.0"
 junit = "6.1.2"
-slf4j = "2.0.17"
+slf4j = "2.0.18"
 japicmp = "0.26.1"
 
 [libraries]
