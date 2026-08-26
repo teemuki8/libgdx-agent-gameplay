@@ -25,8 +25,8 @@ architectural freedom an agent must exercise to implement an ordinary mechanic c
 - The repository, CI, Maven publications, and manual release workflows will be created and pushed.
 - This task does not authorize a version tag, GitHub release, Maven Central staging operation, or
   Maven Central publication. Those actions require separate release authorization.
-- The current dependency baseline is JDK 25, Gradle wrapper 9.6.1, libGDX 1.14.2,
-  `libgdx-agent-runtime` 2.1.0, `libgdx-ui-harness` 1.2.1, and `libgdx-ui-markup` 0.5.0.
+- The current dependency baseline is JDK 25, Gradle wrapper 9.7.0, libGDX 1.14.2,
+  `libgdx-agent-runtime` 2.2.0, `libgdx-ui-harness` 1.2.1, and `libgdx-ui-markup` 0.5.0.
 
 ## Alternatives considered
 
@@ -78,11 +78,11 @@ must not depend on libGDX, Box2D, Scene2D, the harness, or agent runtime.
 logical asset resolution, animation presentation, rendering, camera projection, and immutable
 production of core's world-visual snapshot model.
 
-`gameplay-runtime` depends on core and `agent-runtime-core:2.1.0`. It registers gameplay entities,
+`gameplay-runtime` depends on core and `agent-runtime-core:2.2.0`. It registers gameplay entities,
 properties, events, change causes, simulation metadata, and visual evidence with an
 application-owned `AgentRuntime`.
 
-`gameplay-box2d` depends on core, libGDX Box2D, and `agent-runtime-box2d:2.1.0`. It owns the mapping
+`gameplay-box2d` depends on core, libGDX Box2D, and `agent-runtime-box2d:2.2.0`. It owns the mapping
 between gameplay entities and bridge-created native bodies/fixtures. It does not own the Box2D
 world.
 
@@ -337,7 +337,7 @@ Authority is fixed:
 Contact callbacks copy bounded facts immediately. After the step, stable entity endpoints produce
 typed gameplay events; systems never retain a Box2D `Contact` or other callback-owned object.
 
-The bridge creates an explicitly owned `Box2dInspection` from `agent-runtime-box2d:2.1.0` and
+The bridge creates an explicitly owned `Box2dInspection` from `agent-runtime-box2d:2.2.0` and
 registers its world, bodies, fixtures, and selected contact evidence using stable derived IDs.
 Registration and unregistration occur only at the documented barriers while no runtime frame is
 open. Closing the bridge unregisters runtime handles and destroys bridge-created fixtures/bodies
