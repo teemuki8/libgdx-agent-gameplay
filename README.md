@@ -8,7 +8,7 @@ an ECS-lite world, fixed phase/slot ordering, typed commands and events, strict 
 stable replay digests, Scene2D-independent rendering data, agent-runtime projections, and an
 authoritative Box2D bridge.
 
-Requirements: JDK 25 and libGDX 1.14.2. The project uses its Gradle 9.6.1 wrapper.
+Requirements: JDK 25 and libGDX 1.14.2. The project uses its Gradle 9.7.0 wrapper.
 
 ## Smallest GL-free world
 

@@ -442,18 +442,19 @@ val verifyStackVersionContract = tasks.register("verifyStackVersionContract") {
         mapOf(
             "gdx" to "1.14.2",
             "jackson" to "2.22.1",
-            "agent-runtime" to "2.1.0",
+            "agent-runtime" to "2.2.0",
             "harness" to "1.2.1",
             "markup" to "0.5.0",
-            "junit" to "6.1.2",
-            "japicmp" to "0.23.1",
+            "junit" to "6.1.3",
+            "slf4j" to "2.0.18",
+            "japicmp" to "0.26.1",
         ).forEach { (name, expected) ->
             check(catalogText.lineSequence().any { it == "$name = \"$expected\"" }) {
                 "gradle/libs.versions.toml must declare $name = $expected"
             }
         }
-        check(wrapper.asFile.readText().contains("gradle-9.6.1-bin.zip")) {
-            "Gradle wrapper must remain at 9.6.1"
+        check(wrapper.asFile.readText().contains("gradle-9.7.0-bin.zip")) {
+            "Gradle wrapper must remain at 9.7.0"
         }
 
         val buildTexts = moduleBuilds.mapValues { (_, file) -> file.asFile.readText() }

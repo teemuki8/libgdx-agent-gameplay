@@ -15,7 +15,7 @@ final class BuildContractTest {
         String versions = Files.readString(root.resolve("gradle/libs.versions.toml"));
         String core = Files.readString(root.resolve("gameplay-core/build.gradle.kts"));
         assertTrue(versions.contains("gdx = \"1.14.2\""));
-        assertTrue(versions.contains("agent-runtime = \"2.1.0\""));
+        assertTrue(versions.contains("agent-runtime = \"2.2.0\""));
         assertTrue(versions.contains("harness = \"1.2.1\""));
         assertTrue(versions.contains("markup = \"0.5.0\""));
         assertTrue(versions.contains("jackson = \"2.22.1\""));
@@ -28,7 +28,7 @@ final class BuildContractTest {
                 .filter(line -> line.startsWith("distributionUrl="))
                 .findFirst()
                 .orElseThrow();
-        assertEquals("9.6.1", distribution.replaceAll(
+        assertEquals("9.7.0", distribution.replaceAll(
                 ".*gradle-([0-9.]+)-bin.*", "$1"));
     }
 }
