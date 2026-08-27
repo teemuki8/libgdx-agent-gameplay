@@ -226,13 +226,15 @@ After every `b2World_Step`:
 3. for each hit event, copy shape IDs, point, normal, and approach speed immediately;
 4. query bounded contact data for the hit shape using `b2Shape_GetContactCapacity` and `b2Shape_GetContactData`;
 5. find the contact pair matching the hit's two shapes;
-6. copy the maximum positive `b2ManifoldPoint.normalImpulse`;
+6. copy the maximum positive `b2ManifoldPoint.totalNormalImpulse`, which accumulates impulse across substeps and restitution;
 7. emit existing normalized `CollisionImpact` only when a positive impulse is available;
 8. sort by stable fixture IDs and event phase before gameplay event emission.
 
 No event struct, pointer, contact-data buffer, manifold pointer, or shape ID escapes the post-step capture. Contact capacity and total copied facts are bounded by existing gameplay limits; overflow throws typed diagnostics rather than truncating. Tests cover speculative hit events, pair matching, multiple manifold points, ordering, capacity exhaustion, and reset.
 
 The public `CollisionImpact.normalImpulse` remains N·s and the canonical/runtime event contracts remain unchanged.
+
+The final-substep `normalImpulse` is not an equivalent source: the qualified four-substep real hit reported `normalImpulse == 0` while `totalNormalImpulse > 0`. Production tests retain that regression so substepping cannot silently erase gameplay damage evidence.
 
 ## Bounded raycast
 

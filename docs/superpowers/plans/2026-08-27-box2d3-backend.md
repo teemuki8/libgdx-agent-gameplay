@@ -170,7 +170,7 @@ xvfb-run -a ./gradlew :gameplay-box2d:test --tests '*Box2d3BindingSpikeTest' --w
 - Modify bridge PHYSICS/POST_PHYSICS flow, fixture identity maps, gameplay/runtime event tests
 
 - [ ] Write RED real-native tests for begin/end/hit arrays and exact `CollisionImpact.normalImpulse`.
-- [ ] After each step copy event shape IDs immediately; query bounded contact data; match the pair; copy maximum positive manifold normal impulse.
+- [ ] After each step copy event shape IDs immediately; query bounded contact data; match the pair; copy maximum positive `b2ManifoldPoint.totalNormalImpulse` across substeps. Add the qualified regression where final-substep `normalImpulse` is zero but `totalNormalImpulse` is positive.
 - [ ] Preserve stable endpoint normalization and STARTED/IMPACT/ENDED deterministic ordering.
 - [ ] Preallocate bounded collectors/contact buffers; overflow typed, never truncate.
 - [ ] Cover speculative hits, missing pair/impulse, multiple manifold points, capacity exhaustion, reset/close and no pointer retention.
