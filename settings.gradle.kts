@@ -35,4 +35,5 @@ include(
     "gameplay-runtime",
     "gameplay-box2d",
     "gameplay-fixture",
+    "box2d3-spike",
 )
