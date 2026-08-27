@@ -2,6 +2,7 @@ package io.github.teemuki8.libgdx.agent.gameplay.box2d;
 
 import com.badlogic.gdx.box2d.Box2d;
 import com.badlogic.gdx.box2d.structs.b2JointId;
+import com.badlogic.gdx.box2d.structs.b2Rot;
 import com.badlogic.gdx.box2d.structs.b2QueryFilter;
 import com.badlogic.gdx.box2d.structs.b2RevoluteJointDef;
 import com.badlogic.gdx.box2d.structs.b2TreeStats;
@@ -70,6 +71,8 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
     private final b2Vec2 rayTranslationScratch = new b2Vec2();
     private final b2Vec2 localAnchorA = new b2Vec2();
     private final b2Vec2 localAnchorB = new b2Vec2();
+    private final b2Rot jointRotationA = new b2Rot();
+    private final b2Rot jointRotationB = new b2Rot();
     private final b2RevoluteJointDef revoluteDef = new b2RevoluteJointDef();
     private final b2QueryFilter rayFilter = new b2QueryFilter();
     private final b2TreeStats rayStats = new b2TreeStats();
@@ -149,6 +152,11 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
         revoluteDef.setLocalAnchorB(localAnchorB);
         revoluteDef.enableLimit(true);
         revoluteDef.lowerAngle(finiteFloat(checked.lowerAngleRadians(), "joint.lowerAngle"));
+        Box2d.b2Body_GetRotation(first.body(), jointRotationA);
+        Box2d.b2Body_GetRotation(second.body(), jointRotationB);
+        revoluteDef.referenceAngle(finiteFloat(
+                Box2d.b2Rot_GetAngle(jointRotationB) - Box2d.b2Rot_GetAngle(jointRotationA),
+                "joint.referenceAngle"));
         revoluteDef.upperAngle(finiteFloat(checked.upperAngleRadians(), "joint.upperAngle"));
         revoluteDef.collideConnected(checked.collideConnected());
         b2JointId joint = Box2d.b2CreateRevoluteJoint(world.id(), revoluteDef.asPointer());

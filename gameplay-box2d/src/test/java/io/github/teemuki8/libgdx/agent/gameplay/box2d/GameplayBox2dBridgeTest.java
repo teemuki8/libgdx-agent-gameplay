@@ -10,12 +10,15 @@ import com.badlogic.gdx.box2d.Box2d;
 import com.badlogic.gdx.box2d.enums.b2ShapeType;
 import io.github.teemuki8.libgdx.agent.gameplay.core.GameplayLimits;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Collider;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.Movement;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.StandardComponents;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform2D;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnosticCode;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionImpact;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec2;
+import io.github.teemuki8.libgdx.agent.gameplay.core.world.EntityDraft;
 import io.github.teemuki8.libgdx.agent.gameplay.core.world.GameWorld;
 import io.github.teemuki8.libgdx.agent.runtime.core.AgentRuntime;
 import java.util.List;
@@ -133,6 +136,61 @@ final class GameplayBox2dBridgeTest {
                 () -> new Collider(Collider.Shape.CAPSULE, new Vec2(1, 1), Vec2.ZERO,
                         false, 1, 0xffff));
         assertEquals(GameplayDiagnosticCode.INVALID_COMPONENT_VALUE, equalCapsule.code());
+    }
+
+    @Test
+    void revoluteJointReferenceAnglePreservesNormalAndMirroredInitialPoses() {
+        assertInitialJointPose(0.4, -0.3);
+        assertInitialJointPose(-0.4, 0.3);
+    }
+
+    private static void assertInitialJointPose(double firstAngle, double secondAngle) {
+        GameplayBox2dWorld nativeWorld = Box2dTestSupport.world(Vec2.ZERO);
+        AgentRuntime runtime = Box2dTestSupport.runtime();
+        GameplayBox2dBridge bridge = Box2dTestSupport.bridge(nativeWorld, runtime);
+        GameWorld.Builder builder = GameWorld.builder(
+                        GameplayLimits.defaults(), StandardComponents.registry())
+                .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
+                .initializer(sink -> {
+                    sink.spawn(rotatedBody("first", 0, firstAngle));
+                    sink.spawn(rotatedBody("second", 64, secondAngle));
+                })
+                .lifecycleParticipant(bridge);
+        bridge.systems().forEach(builder::system);
+        runtime.start();
+        try (GameWorld world = builder.build()) {
+            world.step();
+            double firstBefore = bridge.bodyState(EntityId.of("first")).orElseThrow()
+                    .angleRadians();
+            double secondBefore = bridge.bodyState(EntityId.of("second")).orElseThrow()
+                    .angleRadians();
+            Box2dJointId id = Box2dJointId.of("reference-angle");
+            bridge.createRevoluteJoint(new Box2dRevoluteJointSpec(
+                    id, EntityId.of("first"), EntityId.of("second"),
+                    new Vec2(32, 0), -0.2, 0.2, false));
+            assertEquals(0.0, bridge.revoluteJointState(id).orElseThrow().angleRadians(),
+                    1.0e-5);
+            world.step();
+            assertEquals(0.0, bridge.revoluteJointState(id).orElseThrow().angleRadians(),
+                    0.02);
+            assertEquals(firstBefore, bridge.bodyState(EntityId.of("first")).orElseThrow()
+                    .angleRadians(), 0.02);
+            assertEquals(secondBefore, bridge.bodyState(EntityId.of("second")).orElseThrow()
+                    .angleRadians(), 0.02);
+        }
+        runtime.close();
+        nativeWorld.close();
+    }
+
+    private static EntityDraft rotatedBody(String id, double x, double angle) {
+        return EntityDraft.builder(EntityId.of(id))
+                .with(Transform2D.TYPE, new Transform2D(
+                        new Vec2(x, 0), angle, new Vec2(28, 28), new Vec2(0.5, 0.5)))
+                .with(Movement.TYPE, new Movement(Vec2.ZERO, 64))
+                .with(Collider.TYPE, new Collider(
+                        Collider.Shape.BOX, new Vec2(28, 28), Vec2.ZERO,
+                        false, 1, 0xffff))
+                .build();
     }
 
     private static void assertRejectedGeometry(Collider.Shape shape, Vec2 size) {
