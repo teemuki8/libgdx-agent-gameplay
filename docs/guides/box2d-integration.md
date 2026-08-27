@@ -15,12 +15,22 @@ positive normal impulse. Gameplay consumes bounded `CollisionStarted`, `Collisio
 
 Native `Body`, `Fixture`, and `Joint` identities never leave the bridge. Use `bodyState(entityId)`
 and `revoluteJointState(jointId)` for immutable copied state. Create joints with
-`Box2dRevoluteJointSpec`, configure them with `Box2dRevoluteMotor`, apply Box2D SI newtons through
-`applyForceToCenter`, and remove them by stable `Box2dJointId`. Anchors use render units and pass
-through the declared unit conversion; force, angular speed, torque, and angular limits use Box2D SI
-units/radians directly. All operations are owner-thread checked, bounded by inspection limits, and
-resolve private native handles internally. Controller intent still enters only through ordered
-commands.
+`Box2dRevoluteJointSpec`, configure them with `Box2dRevoluteMotor`, and remove them by stable
+`Box2dJointId`. Apply copied body operations without exposing the private body handle:
+
+```java
+bridge.applyForceToCenter(torsoId, new Vec2(forceXNewtons, forceYNewtons));
+bridge.applyTorque(torsoId, torqueNewtonMetres);
+```
+
+Force and torque are finite Box2D SI newtons and newton-metres, without render-unit conversion.
+Call them only on the owner thread and cap their values in the application before calling the
+bridge. The bridge resolves private body identity internally and rejects missing or inactive
+bodies. Force accepts active dynamic or kinematic bodies and rejects static bodies; torque requires
+an active dynamic body. Joint anchors use render units and pass through the declared unit
+conversion; angular speed, motor torque, and angular limits use Box2D SI units/radians directly.
+All operations are owner-thread checked and bounded by inspection limits. Controller intent still
+enters only through ordered commands.
 
 Install `bridge.contactListener()` or `bridge.composeContactListener(applicationListener)` on the
 world. Do not replace it later without equivalent explicit composition. The evidence listener runs

@@ -250,6 +250,21 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
     }
 
     /**
+     * Applies one copied Box2D SI torque to a mapped dynamic body and wakes it.
+     *
+     * @param entityId mapped gameplay entity
+     * @param torqueNewtonMetres torque in newton-metres, without render-unit conversion
+     */
+    public void applyTorque(EntityId entityId, double torqueNewtonMetres) {
+        requireOwnerOpen("apply-box2d-torque");
+        requireWorldUnlocked("apply-box2d-torque");
+        Box2dBodyHandle handle =
+                requireActiveDynamicBody(entityId, "apply-box2d-torque");
+        float torque = finiteFloat(torqueNewtonMetres, "torqueNewtonMetres");
+        handle.body().applyTorque(torque, true);
+    }
+
+    /**
      * Returns copied revolute-joint state without exposing native identity.
      *
      * @param id stable joint ID
@@ -562,6 +577,18 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
             throw failure(GameplayDiagnosticCode.BOX2D_BODY_NOT_FOUND,
                     "active mapped body", checked.value(),
                     "Resolve copied body state before requesting a native transition.");
+        }
+        return handle;
+    }
+
+    private Box2dBodyHandle requireActiveDynamicBody(
+            EntityId entityId, String operation) {
+        Box2dBodyHandle handle = requireHandle(entityId);
+        if (handle.bodyType() != BodyDef.BodyType.DynamicBody || !handle.body().isActive()) {
+            throw failure(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    "active dynamic mapped body",
+                    entityId.value() + ":" + operation,
+                    "Apply force or torque only to an active dynamic mapped body.");
         }
         return handle;
     }
