@@ -18,6 +18,9 @@ import com.badlogic.gdx.physics.box2d.joints.RevoluteJoint;
 import com.badlogic.gdx.utils.Array;
 import io.github.teemuki8.libgdx.agent.gameplay.core.GameplayLimits;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.StandardComponents;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform2D;
+import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnosticCode;
+import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionImpact;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId;
 import io.github.teemuki8.libgdx.agent.gameplay.core.world.GameWorld;
@@ -31,6 +34,7 @@ import io.github.teemuki8.libgdx.agent.runtime.core.AgentRuntime;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
 final class GameplayBox2dBridgeTest {
     @BeforeAll
@@ -118,6 +122,171 @@ final class GameplayBox2dBridgeTest {
         runtime.close();
         nativeWorld.dispose();
     }
+
+    @Test
+    void torqueIsCopiedIntoOneOwnedDynamicBodyWithoutExposingNativeIdentity() {
+        try (TorqueFixture fixture = new TorqueFixture("torque-body")) {
+            EntityId id = EntityId.of("torque-body");
+            fixture.bridge.handle(id).orElseThrow().body().setAwake(false);
+
+            fixture.bridge.applyTorque(id, 6.5);
+            assertTrue(fixture.bridge.handle(id).orElseThrow().body().isAwake());
+            double firstRotation = fixture.stepRotation(id);
+            double secondRotation = fixture.stepRotation(id);
+
+            assertTrue(firstRotation > 0.0);
+            assertTrue(secondRotation - firstRotation > 0.0);
+        }
+    }
+
+    @Test
+    void torqueAcceptsZeroAsNoOpAndNegativeTorqueRotatesInOppositeDirection() {
+        try (TorqueFixture fixture =
+                     new TorqueFixture("zero-torque", "positive-torque", "negative-torque")) {
+            fixture.bridge.applyTorque(EntityId.of("zero-torque"), 0.0);
+            fixture.bridge.applyTorque(EntityId.of("positive-torque"), 6.5);
+            fixture.bridge.applyTorque(EntityId.of("negative-torque"), -6.5);
+
+            var completed = fixture.world.step();
+            double zeroRotation = completed.snapshot().entity(EntityId.of("zero-torque"))
+                    .orElseThrow().component(Transform2D.TYPE).orElseThrow().rotationRadians();
+            double positiveRotation = completed.snapshot().entity(EntityId.of("positive-torque"))
+                    .orElseThrow().component(Transform2D.TYPE).orElseThrow().rotationRadians();
+            double negativeRotation = completed.snapshot().entity(EntityId.of("negative-torque"))
+                    .orElseThrow().component(Transform2D.TYPE).orElseThrow().rotationRadians();
+
+            assertEquals(0.0, zeroRotation, 0.0);
+            assertTrue(positiveRotation > 0.0);
+            assertTrue(negativeRotation < 0.0);
+        }
+    }
+
+    @Test
+    void torqueRejectsInvalidBodyAndLifecycleStates() {
+        try (TorqueFixture fixture =
+                     new TorqueFixture("dynamic", "static", "kinematic")) {
+            EntityId dynamic = EntityId.of("dynamic");
+            assertDiagnostic(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    () -> fixture.bridge.applyTorque(dynamic, Double.NaN));
+            assertDiagnostic(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    () -> fixture.bridge.applyTorque(dynamic, Double.POSITIVE_INFINITY));
+            assertDiagnostic(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    () -> fixture.bridge.applyTorque(EntityId.of("static"), 1.0));
+            assertDiagnostic(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    () -> fixture.bridge.applyTorque(EntityId.of("kinematic"), 1.0));
+            assertDiagnostic(GameplayDiagnosticCode.BOX2D_BODY_NOT_FOUND,
+                    () -> fixture.bridge.applyTorque(EntityId.of("missing"), 1.0));
+
+            fixture.bridge.deactivate(dynamic);
+            assertDiagnostic(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    () -> fixture.bridge.applyTorque(dynamic, 1.0));
+        }
+    }
+
+    @Test
+    void torqueRejectsLockedWorldWithoutMutation() {
+        World nativeWorld = new World(new Vector2(), true);
+        AgentRuntime runtime = AgentRuntime.builder().build();
+        GameplayBox2dBridge bridge = Box2dTestSupport.bridge(nativeWorld, runtime);
+        AtomicReference<Throwable> observed = new AtomicReference<>();
+        AtomicReference<Float> angularVelocityBefore = new AtomicReference<>();
+        AtomicReference<Float> angularVelocityAfter = new AtomicReference<>();
+        nativeWorld.setContactListener(bridge.composeContactListener(new ContactListener() {
+            @Override public void beginContact(Contact contact) {
+                var body = bridge.handle(EntityId.of("alpha")).orElseThrow().body();
+                angularVelocityBefore.set(body.getAngularVelocity());
+                try {
+                    bridge.applyTorque(EntityId.of("alpha"), 6.5);
+                } catch (Throwable failure) {
+                    observed.set(failure);
+                }
+                angularVelocityAfter.set(body.getAngularVelocity());
+            }
+
+            @Override public void endContact(Contact contact) {
+            }
+
+            @Override public void preSolve(Contact contact, Manifold oldManifold) {
+            }
+
+            @Override public void postSolve(Contact contact, ContactImpulse impulse) {
+            }
+        }));
+        GameWorld.Builder builder = GameWorld.builder(
+                        GameplayLimits.defaults(), StandardComponents.registry())
+                .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
+                .initializer(sink -> {
+                    sink.spawn(Box2dTestSupport.body("alpha", 32, 32));
+                    sink.spawn(Box2dTestSupport.body("beta", 32, 32));
+                })
+                .lifecycleParticipant(bridge);
+        bridge.systems().forEach(builder::system);
+        runtime.start();
+
+        try (GameWorld world = builder.build()) {
+            world.step();
+            assertDiagnostic(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    () -> {
+                        throw observed.get();
+                    });
+            assertEquals(angularVelocityBefore.get(), angularVelocityAfter.get());
+        }
+
+        runtime.close();
+        nativeWorld.dispose();
+    }
+
+    @Test
+    void torqueRejectsOwnerThreadViolationWithoutMutation() throws InterruptedException {
+        try (TorqueFixture fixture = new TorqueFixture("torque-body")) {
+            EntityId id = EntityId.of("torque-body");
+            AtomicReference<Throwable> observed = new AtomicReference<>();
+            Thread other = new Thread(() -> {
+                try {
+                    fixture.bridge.applyTorque(id, 6.5);
+                } catch (Throwable failure) {
+                    observed.set(failure);
+                }
+            });
+
+            other.start();
+            other.join();
+
+            assertDiagnostic(GameplayDiagnosticCode.OWNER_THREAD_VIOLATION,
+                    () -> {
+                        throw observed.get();
+                    });
+            assertEquals(0.0,
+                    fixture.bridge.handle(id).orElseThrow().body().getAngularVelocity(), 0.0);
+        }
+    }
+
+    @Test
+    void torqueRejectsClosedBridgeAndLeavesApplicationWorldUsable() {
+        World nativeWorld = new World(new Vector2(), true);
+        AgentRuntime runtime = AgentRuntime.builder().build();
+        GameplayBox2dBridge bridge = Box2dTestSupport.bridge(nativeWorld, runtime);
+        GameWorld.Builder builder = GameWorld.builder(
+                        GameplayLimits.defaults(), StandardComponents.registry())
+                .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
+                .initializer(sink -> sink.spawn(Box2dTestSupport.body(
+                        "torque-body", 32, 32)))
+                .lifecycleParticipant(bridge);
+        bridge.systems().forEach(builder::system);
+        runtime.start();
+
+        try (GameWorld world = builder.build()) {
+            world.step();
+        }
+
+        assertDiagnostic(GameplayDiagnosticCode.BOX2D_BRIDGE_CLOSED,
+                () -> bridge.applyTorque(EntityId.of("torque-body"), 1.0));
+        nativeWorld.createBody(new BodyDef());
+        assertEquals(1, nativeWorld.getBodyCount());
+        runtime.close();
+        nativeWorld.dispose();
+    }
+
 
     @Test
     void copiedJointForceMotorLimitsAndInspectionUseRealNativeWorld() {
@@ -241,8 +410,11 @@ final class GameplayBox2dBridgeTest {
         AgentRuntime runtime = AgentRuntime.builder().build();
         Box2dBodyFactory bodies = new Box2dBodyFactory(
                 Box2dTestSupport.UNITS,
-                entity -> entity.id().value().equals("static")
-                        ? BodyDef.BodyType.StaticBody : BodyDef.BodyType.DynamicBody);
+                entity -> switch (entity.id().value()) {
+                    case "static" -> BodyDef.BodyType.StaticBody;
+                    case "kinematic" -> BodyDef.BodyType.KinematicBody;
+                    default -> BodyDef.BodyType.DynamicBody;
+                });
         GameplayBox2dBridge bridge = new GameplayBox2dBridge(
                 nativeWorld, bodies, Box2dTestSupport.UNITS, Box2dTestSupport.SOLVER,
                 runtime, GameplayLimits.defaults());
@@ -252,6 +424,7 @@ final class GameplayBox2dBridgeTest {
                 .initializer(sink -> {
                     sink.spawn(Box2dTestSupport.body("dynamic", 32, 32));
                     sink.spawn(Box2dTestSupport.body("static", 64, 32));
+                    sink.spawn(Box2dTestSupport.body("kinematic", 96, 32));
                 })
                 .lifecycleParticipant(bridge);
         bridge.systems().forEach(builder::system);
@@ -263,6 +436,8 @@ final class GameplayBox2dBridgeTest {
                     () -> bridge.applyForceToCenter(EntityId.of("missing"), Vec2.ZERO));
             assertThrows(RuntimeException.class,
                     () -> bridge.applyForceToCenter(EntityId.of("static"), Vec2.ZERO));
+            assertThrows(RuntimeException.class,
+                    () -> bridge.applyForceToCenter(EntityId.of("kinematic"), Vec2.ZERO));
             bridge.deactivate(EntityId.of("dynamic"));
             assertThrows(RuntimeException.class,
                     () -> bridge.applyForceToCenter(EntityId.of("dynamic"), Vec2.ZERO));
@@ -453,6 +628,57 @@ final class GameplayBox2dBridgeTest {
         return new Box2dRevoluteJointSpec(
                 Box2dJointId.of(id), EntityId.of(first), EntityId.of(second),
                 new Vec2(48, 32), -0.5, 0.5, false);
+    }
+
+    private static void assertDiagnostic(
+            GameplayDiagnosticCode code, Executable executable) {
+        assertEquals(code, assertThrows(GameplayException.class, executable).code());
+    }
+
+    private static final class TorqueFixture implements AutoCloseable {
+        private final World nativeWorld = new World(new Vector2(), true);
+        private final AgentRuntime runtime = AgentRuntime.builder().build();
+        private final GameplayBox2dBridge bridge;
+        private final GameWorld world;
+
+        private TorqueFixture(String... entityIds) {
+            Box2dBodyFactory bodies = new Box2dBodyFactory(
+                    Box2dTestSupport.UNITS,
+                    entity -> switch (entity.id().value()) {
+                        case "static" -> BodyDef.BodyType.StaticBody;
+                        case "kinematic" -> BodyDef.BodyType.KinematicBody;
+                        default -> BodyDef.BodyType.DynamicBody;
+                    });
+            bridge = new GameplayBox2dBridge(
+                    nativeWorld, bodies, Box2dTestSupport.UNITS, Box2dTestSupport.SOLVER,
+                    runtime, GameplayLimits.defaults());
+            GameWorld.Builder builder = GameWorld.builder(
+                            GameplayLimits.defaults(), StandardComponents.registry())
+                    .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
+                    .initializer(sink -> {
+                        for (int index = 0; index < entityIds.length; index++) {
+                            sink.spawn(Box2dTestSupport.body(
+                                    entityIds[index], 32.0 + index * 64.0, 32));
+                        }
+                    })
+                    .lifecycleParticipant(bridge);
+            bridge.systems().forEach(builder::system);
+            runtime.start();
+            world = builder.build();
+            world.step();
+        }
+
+        private double stepRotation(EntityId entityId) {
+            return world.step().snapshot().entity(entityId).orElseThrow()
+                    .component(Transform2D.TYPE).orElseThrow().rotationRadians();
+        }
+
+        @Override
+        public void close() {
+            world.close();
+            runtime.close();
+            nativeWorld.dispose();
+        }
     }
 
     private static io.github.teemuki8.libgdx.agent.runtime.core.EntityId runtimeId(String value) {
