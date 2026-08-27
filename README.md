@@ -37,25 +37,28 @@ apply.
   fixed-step presentation support.
 - `io.github.teemuki8:gameplay-runtime` — typed agent-runtime entity, event, visual, and correlation
   projections.
-- `io.github.teemuki8:gameplay-box2d` — owner-thread Box2D authority, copied collision-impact
-  evidence, bounded private-identity revolute joints/body force and torque, inspection, and explicit
-  render-unit conversion. Native bodies, fixtures, and joints never cross the bridge API.
+- `io.github.teemuki8:gameplay-box2d` — owner-thread Box2D 3 authority over an
+  application-owned opaque world, genuine box/circle/capsule shapes, copied dynamics and
+  collision-impact evidence, bounded private-identity revolute joints, forces, torque, and raycast.
+  Native IDs, structs, pointers, closures, and buffers never cross the bridge API.
 - `gameplay-fixture` is the markup/harness qualification application and is not published.
 
-The Box2D adapter reports positive normal impulses as immutable `CollisionImpact` events. Its
-joint/force/torque API accepts stable IDs and copied values only:
+The Box2D 3 adapter reports maximum positive whole-step `totalNormalImpulse` as immutable
+`CollisionImpact` events. Physical operations accept stable IDs and copied values only:
 
 ```java
 bridge.applyForceToCenter(torsoId, new Vec2(forceXNewtons, forceYNewtons));
 bridge.applyTorque(torsoId, torqueNewtonMetres);
+bridge.applyForce(torsoId, forceNewtons, worldPointRenderUnits);
+var hits = bridge.raycast(new Box2dRaycastSpec(origin, translation, category, mask, 16));
 ```
 
-Both body-operation values are finite Box2D SI newtons/newton-metres, owner-thread confined, and
-capped by the application. The bridge resolves private body identity internally. Joint anchors use
-render units; motor speed and angular limits use radians.
+Forces and torque are finite SI values; points, joint anchors, and raycasts use render units.
+Every operation is owner-thread confined and bounded. The bridge resolves private native identity
+internally and returns copied immutable body, joint, contact, and ray evidence.
 
-No Maven Central release has been authorized. Local publication qualification uses
-`0.1.0-SNAPSHOT`; consumers should select an actual Central version once one exists.
+No gameplay 1.0 Maven Central release has been authorized. Local publication qualification uses
+the property-driven `1.0.0-SNAPSHOT`; release workflows must supply the exact authorized version.
 
 ## Guides
 

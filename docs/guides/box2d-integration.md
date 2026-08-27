@@ -1,47 +1,64 @@
-# Box2D integration
+# Box2D 3 integration
 
-The application owns `com.badlogic.gdx.physics.box2d.World`, native initialization, and the one
-installed contact listener. Create `GameplayBox2dBridge` on the world owner thread with one
-`Box2dBodyFactory`, immutable `Box2dUnitConversion`, fixed `Box2dSolverSettings`, application-owned
-runtime, and gameplay limits. Add the bridge as a lifecycle participant and add all three returned
-systems.
+The application owns one opaque `GameplayBox2dWorld`. Create it on the render/owner thread from a
+`Box2dWorldSpec`, then construct `GameplayBox2dBridge` with a `Box2dBodyFactory`, immutable
+`Box2dUnitConversion`, application-owned runtime, and gameplay limits. Register the bridge as a
+lifecycle participant and add all three returned systems. Close the bridge before the world.
+Construct one `Box2dBodyFactory` per bridge on that same owner thread. The factory owns reusable
+native definition/geometry scratch and may be claimed by exactly one bridge; cross-thread or
+second-bridge reuse is rejected before registration or scratch mutation.
 
-The bridge creates and owns only bodies/fixtures corresponding to active gameplay entities plus
-revolute joints explicitly created through copied-value specifications. It applies movement intent
-in `PRE_PHYSICS`, steps the native world in `PHYSICS`, and copies native position/velocity authority
-back in `POST_PHYSICS`. Contact callbacks immediately copy stable fixture endpoints and the maximum
-positive normal impulse. Gameplay consumes bounded `CollisionStarted`, `CollisionEnded`, and
-`CollisionImpact` events after the step; no callback-owned object is retained.
+`GameplayBox2dWorld` fixes the native worker count at zero and steps with the bounded `subStepCount`
+from its specification. It never exposes `b2WorldId`. The bridge's native `b2BodyId`, `b2ShapeId`,
+`b2JointId`, structs, pointers, callback data, and closures are likewise private implementation
+details. Application code uses only immutable copied values.
 
-Native `Body`, `Fixture`, and `Joint` identities never leave the bridge. Use `bodyState(entityId)`
-and `revoluteJointState(jointId)` for immutable copied state. Create joints with
-`Box2dRevoluteJointSpec`, configure them with `Box2dRevoluteMotor`, and remove them by stable
-`Box2dJointId`. Apply copied body operations without exposing the private body handle:
+Resolve each activated entity to a complete `Box2dBodySpec`. Static and kinematic shapes may use
+zero density; dynamic shapes require positive density. Friction, restitution, damping, gravity
+scale, bullet state, and fixed rotation are copied once into native definitions. `Collider.Shape`
+supports `BOX`, equal-dimension `CIRCLE`, and genuine `CAPSULE`. Capsule size is its complete local
+bounds: the smaller dimension is the diameter and the larger dimension is the end-to-end length.
+Equal capsule dimensions are rejected; use `CIRCLE` instead.
+
+All original double shape relationships are validated before narrowing, and every converted
+dimension, half-extent, radius, and capsule centre half-segment must remain finite and strictly
+positive.
+
+The bridge applies movement intent in `PRE_PHYSICS`, performs exactly one Box2D 3 step in `PHYSICS`,
+and copies position, velocity, angle, angular velocity, mass, and inertia in `POST_PHYSICS`. Read
+those facts with `bodyState(entityId)`. Contact begin/hit/end arrays are copied after the step and
+normalized by stable fixture ID. `CollisionImpact.normalImpulse` is the maximum positive
+`b2ManifoldPoint.totalNormalImpulse`, accumulated across substeps; callback pointers and contact
+buffers never escape the capture.
+
+Create joints with `Box2dRevoluteJointSpec`, configure them with `Box2dRevoluteMotor`, inspect copied
+state with `revoluteJointState`, and remove them by stable `Box2dJointId`. Joint anchors use render
+units; angular values and torque use radians and SI units. Apply physical operations without native
+identity:
 
 ```java
 bridge.applyForceToCenter(torsoId, new Vec2(forceXNewtons, forceYNewtons));
 bridge.applyTorque(torsoId, torqueNewtonMetres);
+bridge.applyForce(torsoId, new Vec2(forceXNewtons, forceYNewtons), worldPointRenderUnits);
 ```
 
-Force and torque are finite Box2D SI newtons and newton-metres, without render-unit conversion.
-Call them only on the owner thread and cap their values in the application before calling the
-bridge. The bridge resolves private body identity internally and rejects missing or inactive
-bodies. Force accepts active dynamic or kinematic bodies and rejects static bodies; torque requires
-an active dynamic body. Joint anchors use render units and pass through the declared unit
-conversion; angular speed, motor torque, and angular limits use Box2D SI units/radians directly.
-All operations are owner-thread checked and bounded by inspection limits. Controller intent still
-enters only through ordered commands.
+For bounded spatial evidence, call `raycast(new Box2dRaycastSpec(...))`. `maxHits` is 1 through 64;
+unknown shapes are ignored and copied hits are returned immutable, ordered by fraction then fixture
+ID. The call-scoped native closure is released on success and failure.
 
-Install `bridge.contactListener()` or `bridge.composeContactListener(applicationListener)` on the
-world. Do not replace it later without equivalent explicit composition. The evidence listener runs
-first so application callback failure cannot erase inspection evidence.
+All bridge/world operations are owner-thread confined. Native mutation rejects closed, stale,
+locked, missing, inactive, or wrong-body-type targets. Joint registrations are closed and joints are
+destroyed before endpoint shapes and bodies. The bridge releases contact scratch and inspection
+registrations but never closes the application-owned world; the application closes
+`GameplayBox2dWorld` afterward. Rebuild both at the reset boundary when exact replay reset is
+required.
 
-Use one declared render-units-per-metre conversion everywhere. Collider sizes, positions, and joint
-anchors enter Box2D through `toPhysicsUnits`; body positions and velocities return through
-`toRenderUnits`. Joint inspection appears under `box2d.joint.<stable-id>`.
+## Migrating from gameplay 0.3
 
-Close the gameplay world/bridge before disposing the native world. The bridge closes joint
-inspection registrations and destroys its joints before unregistering and destroying endpoint
-bodies; it never disposes the application-owned world. Reset uses the same joint-before-body
-lifecycle boundary. Rebuild the native world when exact replay reset is required because Box2D
-broadphase history is not authoritative reusable state.
+Gameplay 1.0 is a clean backend break. Replace the legacy `World` constructor input with
+`GameplayBox2dWorld`, `BodyDef.BodyType` with `Box2dBodyType`, and body-type lambdas with a complete
+`Box2dBodySpecResolver`. Remove `Box2dSolverSettings` and contact-listener installation; configure
+substeps and hit threshold through `Box2dWorldSpec`. Read
+`positionRenderUnits`/`velocityRenderUnitsPerSecond` from the expanded copied state. Applications
+must close the bridge before the application-owned world and include the official
+`gdx-box2d:3.1.1-0` desktop native. Runtime inspection requires `agent-runtime-box2d:3.0.0`.
