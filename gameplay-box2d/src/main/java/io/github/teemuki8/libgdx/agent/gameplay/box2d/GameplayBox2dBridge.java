@@ -229,7 +229,7 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
     }
 
     /**
-     * Applies a copied Box2D SI force at a mapped dynamic body's centre and wakes it.
+     * Applies a copied Box2D SI force at a mapped non-static body's centre and wakes it.
      *
      * @param entityId mapped gameplay entity
      * @param forceNewtons force in newtons, without render-unit conversion
@@ -237,8 +237,13 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
     public void applyForceToCenter(EntityId entityId, Vec2 forceNewtons) {
         requireOwnerOpen("apply-force-to-center");
         requireWorldUnlocked("apply-force-to-center");
-        Box2dBodyHandle handle = requireActiveDynamicBody(entityId, "apply-force-to-center");
+        Box2dBodyHandle handle = requireHandle(entityId);
         Vec2 checked = Objects.requireNonNull(forceNewtons, "forceNewtons");
+        if (handle.bodyType() == BodyDef.BodyType.StaticBody || !handle.body().isActive()) {
+            throw failure(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    "active non-static mapped body", entityId.value(),
+                    "Apply force only to an active dynamic or kinematic mapped body.");
+        }
         handle.body().applyForceToCenter(
                 finiteFloat(checked.x(), "forceNewtons.x"),
                 finiteFloat(checked.y(), "forceNewtons.y"), true);

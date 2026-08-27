@@ -25,11 +25,12 @@ bridge.applyTorque(torsoId, torqueNewtonMetres);
 
 Force and torque are finite Box2D SI newtons and newton-metres, without render-unit conversion.
 Call them only on the owner thread and cap their values in the application before calling the
-bridge. The bridge resolves private body identity internally and rejects missing, inactive, or
-non-dynamic bodies. Joint anchors use render units and pass through the declared unit conversion;
-angular speed, motor torque, and angular limits use Box2D SI units/radians directly. All operations
-are owner-thread checked and bounded by inspection limits. Controller intent still enters only
-through ordered commands.
+bridge. The bridge resolves private body identity internally and rejects missing or inactive
+bodies. Force accepts active dynamic or kinematic bodies and rejects static bodies; torque requires
+an active dynamic body. Joint anchors use render units and pass through the declared unit
+conversion; angular speed, motor torque, and angular limits use Box2D SI units/radians directly.
+All operations are owner-thread checked and bounded by inspection limits. Controller intent still
+enters only through ordered commands.
 
 Install `bridge.contactListener()` or `bridge.composeContactListener(applicationListener)` on the
 world. Do not replace it later without equivalent explicit composition. The evidence listener runs

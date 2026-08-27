@@ -1,5 +1,6 @@
 package io.github.teemuki8.libgdx.agent.gameplay.box2d;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -410,11 +411,8 @@ final class GameplayBox2dBridgeTest {
         AgentRuntime runtime = AgentRuntime.builder().build();
         Box2dBodyFactory bodies = new Box2dBodyFactory(
                 Box2dTestSupport.UNITS,
-                entity -> switch (entity.id().value()) {
-                    case "static" -> BodyDef.BodyType.StaticBody;
-                    case "kinematic" -> BodyDef.BodyType.KinematicBody;
-                    default -> BodyDef.BodyType.DynamicBody;
-                });
+                entity -> entity.id().value().equals("static")
+                        ? BodyDef.BodyType.StaticBody : BodyDef.BodyType.DynamicBody);
         GameplayBox2dBridge bridge = new GameplayBox2dBridge(
                 nativeWorld, bodies, Box2dTestSupport.UNITS, Box2dTestSupport.SOLVER,
                 runtime, GameplayLimits.defaults());
@@ -424,7 +422,6 @@ final class GameplayBox2dBridgeTest {
                 .initializer(sink -> {
                     sink.spawn(Box2dTestSupport.body("dynamic", 32, 32));
                     sink.spawn(Box2dTestSupport.body("static", 64, 32));
-                    sink.spawn(Box2dTestSupport.body("kinematic", 96, 32));
                 })
                 .lifecycleParticipant(bridge);
         bridge.systems().forEach(builder::system);
@@ -436,8 +433,6 @@ final class GameplayBox2dBridgeTest {
                     () -> bridge.applyForceToCenter(EntityId.of("missing"), Vec2.ZERO));
             assertThrows(RuntimeException.class,
                     () -> bridge.applyForceToCenter(EntityId.of("static"), Vec2.ZERO));
-            assertThrows(RuntimeException.class,
-                    () -> bridge.applyForceToCenter(EntityId.of("kinematic"), Vec2.ZERO));
             bridge.deactivate(EntityId.of("dynamic"));
             assertThrows(RuntimeException.class,
                     () -> bridge.applyForceToCenter(EntityId.of("dynamic"), Vec2.ZERO));
@@ -445,6 +440,19 @@ final class GameplayBox2dBridgeTest {
 
         runtime.close();
         nativeWorld.dispose();
+    }
+
+    @Test
+    void forceAcceptsActiveKinematicBodyAsPublishedNoOp() {
+        try (TorqueFixture fixture = new TorqueFixture("kinematic")) {
+            EntityId id = EntityId.of("kinematic");
+
+            assertDoesNotThrow(
+                    () -> fixture.bridge.applyForceToCenter(id, new Vec2(12.0, -7.0)));
+            fixture.world.step();
+
+            assertEquals(Vec2.ZERO, fixture.bridge.bodyState(id).orElseThrow().velocity());
+        }
     }
 
     @Test
