@@ -10,8 +10,6 @@ import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.PixmapIO;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
-import com.badlogic.gdx.math.Vector2;
-import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.Group;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
@@ -32,8 +30,11 @@ import dev.gdx.markup.core.MarkupParser;
 import dev.gdx.markup.core.style.CssParser;
 import dev.gdx.markup.harness.HarnessSemanticSink;
 import dev.gdx.markup.runtime.MarkupRuntimeSource;
+import io.github.teemuki8.libgdx.agent.gameplay.box2d.Box2dWorldSpec;
+import io.github.teemuki8.libgdx.agent.gameplay.box2d.GameplayBox2dWorld;
 import io.github.teemuki8.libgdx.agent.gameplay.core.GameplayLimits;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Health;
+import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec2;
 import io.github.teemuki8.libgdx.agent.gameplay.libgdx.AssetResolver;
 import io.github.teemuki8.libgdx.agent.gameplay.libgdx.FixedStepLoop;
 import io.github.teemuki8.libgdx.agent.gameplay.libgdx.GameplayRenderer;
@@ -64,7 +65,7 @@ public final class ArenaApplication extends ApplicationAdapter {
     private Skin skin;
     private Group uiRoot;
     private AgentRuntime runtime;
-    private World nativeWorld;
+    private GameplayBox2dWorld nativeWorld;
     private ArenaGameState state;
     private GameplayRuntimeBridge gameplayRuntime;
     private ArenaRuntimeProjection runtimeProjection;
@@ -119,7 +120,7 @@ public final class ArenaApplication extends ApplicationAdapter {
                         ArenaWorldFactory.VIEWPORT_WIDTH,
                         ArenaWorldFactory.VIEWPORT_HEIGHT,
                         ArenaWorldFactory.UNITS.renderUnitsPerMeter()));
-        nativeWorld = new World(new Vector2(), true);
+        nativeWorld = newNativeWorld();
         arena = ArenaWorldFactory.openApplication(
                 state, nativeWorld, runtime, input, gameplayRuntime, runtimeProjection);
         runtime.start();
@@ -222,7 +223,7 @@ public final class ArenaApplication extends ApplicationAdapter {
             stage.dispose();
         }
         if (nativeWorld != null) {
-            nativeWorld.dispose();
+            nativeWorld.close();
         }
     }
 
@@ -307,10 +308,10 @@ public final class ArenaApplication extends ApplicationAdapter {
 
     private void resetArena() {
         arena.close();
-        nativeWorld.dispose();
+        nativeWorld.close();
         state.reset();
         state.startPlaying();
-        nativeWorld = new World(new Vector2(), true);
+        nativeWorld = newNativeWorld();
         arena = ArenaWorldFactory.openApplication(
                 state, nativeWorld, runtime, input, gameplayRuntime, runtimeProjection);
         stepWorld();
@@ -319,6 +320,10 @@ public final class ArenaApplication extends ApplicationAdapter {
         gameOverOverlay.setVisible(false);
         stage.setKeyboardFocus(resetButton);
     }
+    private static GameplayBox2dWorld newNativeWorld() {
+        return GameplayBox2dWorld.create(new Box2dWorldSpec(Vec2.ZERO, 4, 0.1));
+    }
+
 
     private void updateHud() {
         var snapshot = arena.world().snapshot();

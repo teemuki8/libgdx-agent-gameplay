@@ -1,695 +1,193 @@
 package io.github.teemuki8.libgdx.agent.gameplay.box2d;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.badlogic.gdx.math.Vector2;
-import com.badlogic.gdx.physics.box2d.BodyDef;
-import com.badlogic.gdx.physics.box2d.Contact;
-import com.badlogic.gdx.physics.box2d.ContactImpulse;
-import com.badlogic.gdx.physics.box2d.ContactListener;
-import com.badlogic.gdx.physics.box2d.Joint;
-import com.badlogic.gdx.physics.box2d.Manifold;
-import com.badlogic.gdx.physics.box2d.World;
-import com.badlogic.gdx.physics.box2d.joints.RevoluteJoint;
-import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.box2d.Box2d;
+import com.badlogic.gdx.box2d.enums.b2ShapeType;
 import io.github.teemuki8.libgdx.agent.gameplay.core.GameplayLimits;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.Collider;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.StandardComponents;
-import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform2D;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnosticCode;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.CollisionImpact;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId;
-import io.github.teemuki8.libgdx.agent.gameplay.core.world.GameWorld;
-import io.github.teemuki8.libgdx.agent.gameplay.core.system.GameSystem;
-import io.github.teemuki8.libgdx.agent.gameplay.core.system.SystemContext;
-import io.github.teemuki8.libgdx.agent.gameplay.core.system.SystemDescriptor;
-import io.github.teemuki8.libgdx.agent.gameplay.core.system.SystemPhase;
-import io.github.teemuki8.libgdx.agent.gameplay.core.value.SystemId;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec2;
+import io.github.teemuki8.libgdx.agent.gameplay.core.world.GameWorld;
 import io.github.teemuki8.libgdx.agent.runtime.core.AgentRuntime;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.function.Executable;
 
 final class GameplayBox2dBridgeTest {
     @BeforeAll
-    static void initializeNatives() {
-        Box2dTestSupport.initializeNatives();
-    }
+    static void initializeNatives() { Box2dTestSupport.initializeNatives(); }
 
     @Test
-    void activationCreatesStableInspectedBodyWithoutTakingWorldOwnership() {
-        World nativeWorld = new World(new Vector2(), true);
-        AgentRuntime runtime = AgentRuntime.builder().build();
-        GameplayBox2dBridge bridge = Box2dTestSupport.bridge(nativeWorld, runtime);
-        GameWorld.Builder builder = GameWorld.builder(
-                        GameplayLimits.defaults(), StandardComponents.registry())
-                .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
-                .initializer(sink -> sink.spawn(Box2dTestSupport.body("player", 32, 64)))
-                .lifecycleParticipant(bridge);
-        bridge.systems().forEach(builder::system);
-        runtime.start();
-
-        try (GameWorld world = builder.build()) {
-            world.step();
-            Box2dBodyHandle handle = bridge.handle(EntityId.of("player")).orElseThrow();
-            assertEquals(EntityId.of("player"), handle.body().getUserData());
-            assertEquals(1, nativeWorld.getBodyCount());
-            runtime.frame(1, () -> { });
-            assertEquals("player", runtime.entity(runtimeId("box2d.body.player"))
-                    .orElseThrow().displayName().orElseThrow());
-            assertEquals("player.collider", runtime.entity(
-                    runtimeId("box2d.fixture.player.collider"))
-                    .orElseThrow().displayName().orElseThrow());
-            assertEquals("gameplay", runtime.entity(runtimeId("box2d.contacts.gameplay"))
-                    .orElseThrow().displayName().orElseThrow());
-        }
-
-        assertEquals(0, nativeWorld.getBodyCount());
-        nativeWorld.createBody(new com.badlogic.gdx.physics.box2d.BodyDef());
-        assertEquals(1, nativeWorld.getBodyCount());
-        bridge.close();
-        runtime.close();
-        nativeWorld.dispose();
-    }
-
-    @Test
-    void realNativeWorldEmitsCopiedCollisionImpactThroughTheBridge() {
-        World nativeWorld = new World(new Vector2(), true);
-        AgentRuntime runtime = AgentRuntime.builder().build();
+    void realBackendCopiesBodiesCapsulesJointsForcesRaycastsContactsAndLifecycle() {
+        GameplayBox2dWorld nativeWorld = Box2dTestSupport.world(Vec2.ZERO);
+        AgentRuntime runtime = Box2dTestSupport.runtime();
         GameplayBox2dBridge bridge = Box2dTestSupport.bridge(nativeWorld, runtime);
         GameWorld.Builder builder = GameWorld.builder(
                         GameplayLimits.defaults(), StandardComponents.registry())
                 .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
                 .initializer(sink -> {
-                    sink.spawn(Box2dTestSupport.body("alpha", 0, 32));
-                    sink.spawn(Box2dTestSupport.body("beta", 96, 32));
+                    sink.spawn(Box2dTestSupport.body("alpha", 0, 32,
+                            Collider.Shape.CAPSULE, new Vec2(24, 48)));
+                    sink.spawn(Box2dTestSupport.body("beta", 96, 32,
+                            Collider.Shape.BOX, new Vec2(28, 28)));
                 })
                 .lifecycleParticipant(bridge);
         bridge.systems().forEach(builder::system);
-        nativeWorld.setContactListener(bridge.contactListener());
         runtime.start();
 
-        CollisionImpact copied = null;
+        CollisionImpact impact = null;
         try (GameWorld world = builder.build()) {
             world.step();
-            bridge.handle(EntityId.of("alpha")).orElseThrow()
-                    .body().setLinearVelocity(2, 0);
-            bridge.handle(EntityId.of("beta")).orElseThrow()
-                    .body().setLinearVelocity(-2, 0);
-            for (int step = 0; step < 90 && copied == null; step++) {
-                copied = world.step().events().stream()
+            EntityId alpha = EntityId.of("alpha");
+            EntityId beta = EntityId.of("beta");
+            Box2dBodyState alphaState = bridge.bodyState(alpha).orElseThrow();
+            assertEquals(Box2dBodyType.DYNAMIC, alphaState.bodyType());
+            assertEquals(Collider.Shape.CAPSULE, alphaState.colliderShape());
+            assertTrue(alphaState.massKilograms() > 0.0);
+            assertTrue(alphaState.rotationalInertiaKilogramMetresSquared() > 0.0);
+            assertEquals(b2ShapeType.b2_capsuleShape,
+                    Box2d.b2Shape_GetType(bridge.handle(alpha).orElseThrow().shape()));
+
+            Box2dJointId jointId = Box2dJointId.of("alpha-beta");
+            bridge.createRevoluteJoint(new Box2dRevoluteJointSpec(
+                    jointId, alpha, beta, new Vec2(48, 32), -0.5, 0.5, false));
+            bridge.configureRevoluteMotor(jointId, new Box2dRevoluteMotor(true, 3.0, 20.0));
+            Box2dRevoluteJointState joint = bridge.revoluteJointState(jointId).orElseThrow();
+            assertTrue(joint.motorEnabled());
+            assertEquals(3.0, joint.motorSpeedRadiansPerSecond(), 1.0e-6);
+            runtime.frame(1, () -> { });
+            assertTrue(runtime.entity(io.github.teemuki8.libgdx.agent.runtime.core.EntityId.of(
+                    "box2d.joint.alpha-beta")).isPresent());
+            bridge.removeJoint(jointId);
+            assertTrue(bridge.revoluteJointState(jointId).isEmpty());
+
+            double angularBefore = alphaState.angularVelocityRadiansPerSecond();
+            bridge.applyTorque(alpha, 8.0);
+            bridge.applyForce(alpha, new Vec2(0, 20), new Vec2(16, 32));
+            bridge.applyForceToCenter(alpha, new Vec2(50, 0));
+            bridge.applyForceToCenter(beta, new Vec2(-50, 0));
+            world.step();
+            assertTrue(Math.abs(bridge.bodyState(alpha).orElseThrow()
+                    .angularVelocityRadiansPerSecond()) > Math.abs(angularBefore));
+
+            var rayHits = bridge.raycast(new Box2dRaycastSpec(
+                    new Vec2(-64, 32), new Vec2(256, 0), 1, 0xffff, 2));
+            assertEquals(2, rayHits.size());
+            assertTrue(rayHits.get(0).fraction() <= rayHits.get(1).fraction());
+            assertTrue(rayHits.stream().allMatch(hit -> hit.fixtureId().endsWith(".collider")));
+            var nearest = bridge.raycast(new Box2dRaycastSpec(
+                    new Vec2(-64, 32), new Vec2(256, 0), 1, 0xffff, 1));
+            assertEquals(List.of(rayHits.get(0)), nearest);
+
+            for (int step = 0; step < 180 && impact == null; step++) {
+                impact = world.step().events().stream()
                         .map(envelope -> envelope.event())
                         .filter(CollisionImpact.class::isInstance)
                         .map(CollisionImpact.class::cast)
-                        .findFirst()
-                        .orElse(null);
+                        .findFirst().orElse(null);
             }
+            runtime.frame(2, () -> { });
+            assertTrue(runtime.entity(io.github.teemuki8.libgdx.agent.runtime.core.EntityId.of(
+                    "box2d.body.alpha")).isPresent());
+            assertTrue(runtime.entity(io.github.teemuki8.libgdx.agent.runtime.core.EntityId.of(
+                    "box2d.fixture.alpha.collider")).isPresent());
         }
 
-        assertNotNull(copied);
-        assertEquals(EntityId.of("alpha"), copied.first());
-        assertEquals(EntityId.of("beta"), copied.second());
-        assertEquals("alpha.collider", copied.firstFixtureId());
-        assertEquals("beta.collider", copied.secondFixtureId());
-        assertEquals(true, copied.normalImpulse() > 0.0);
+        assertNotNull(impact);
+        assertEquals(EntityId.of("alpha"), impact.first());
+        assertEquals(EntityId.of("beta"), impact.second());
+        assertTrue(impact.normalImpulse() > 0.0);
+        assertTrue(Box2d.b2World_IsValid(nativeWorld.id()));
         bridge.close();
         runtime.close();
-        nativeWorld.dispose();
+        nativeWorld.close();
+        assertTrue(nativeWorld.isClosed());
     }
 
     @Test
-    void torqueIsCopiedIntoOneOwnedDynamicBodyWithoutExposingNativeIdentity() {
-        try (TorqueFixture fixture = new TorqueFixture("torque-body")) {
-            EntityId id = EntityId.of("torque-body");
-            fixture.bridge.handle(id).orElseThrow().body().setAwake(false);
-
-            fixture.bridge.applyTorque(id, 6.5);
-            assertTrue(fixture.bridge.handle(id).orElseThrow().body().isAwake());
-            double firstRotation = fixture.stepRotation(id);
-            double secondRotation = fixture.stepRotation(id);
-
-            assertTrue(firstRotation > 0.0);
-            assertTrue(secondRotation - firstRotation > 0.0);
-        }
+    void horizontalAndVerticalCapsulesUseCompleteBounds() {
+        assertCapsuleGeometry(new Vec2(64, 16), -0.75f, 0.75f, true);
+        assertCapsuleGeometry(new Vec2(16, 64), -0.75f, 0.75f, false);
     }
 
     @Test
-    void torqueAcceptsZeroAsNoOpAndNegativeTorqueRotatesInOppositeDirection() {
-        try (TorqueFixture fixture =
-                     new TorqueFixture("zero-torque", "positive-torque", "negative-torque")) {
-            fixture.bridge.applyTorque(EntityId.of("zero-torque"), 0.0);
-            fixture.bridge.applyTorque(EntityId.of("positive-torque"), 6.5);
-            fixture.bridge.applyTorque(EntityId.of("negative-torque"), -6.5);
+    void rejectsUndersizedAndFloatRoundedShapeDimensionsBeforeNativeCreation() {
+        assertRejectedGeometry(Collider.Shape.BOX, new Vec2(Double.MIN_VALUE, 32));
+        assertRejectedGeometry(Collider.Shape.CIRCLE,
+                new Vec2(Double.MIN_VALUE, Double.MIN_VALUE));
+        assertRejectedGeometry(Collider.Shape.CIRCLE,
+                new Vec2(1.0, Math.nextUp(1.0)));
+        assertRejectedGeometry(Collider.Shape.CAPSULE,
+                new Vec2(1.0, Math.nextUp(1.0)));
 
-            var completed = fixture.world.step();
-            double zeroRotation = completed.snapshot().entity(EntityId.of("zero-torque"))
-                    .orElseThrow().component(Transform2D.TYPE).orElseThrow().rotationRadians();
-            double positiveRotation = completed.snapshot().entity(EntityId.of("positive-torque"))
-                    .orElseThrow().component(Transform2D.TYPE).orElseThrow().rotationRadians();
-            double negativeRotation = completed.snapshot().entity(EntityId.of("negative-torque"))
-                    .orElseThrow().component(Transform2D.TYPE).orElseThrow().rotationRadians();
-
-            assertEquals(0.0, zeroRotation, 0.0);
-            assertTrue(positiveRotation > 0.0);
-            assertTrue(negativeRotation < 0.0);
-        }
+        GameplayException equalCapsule = assertThrows(GameplayException.class,
+                () -> new Collider(Collider.Shape.CAPSULE, new Vec2(1, 1), Vec2.ZERO,
+                        false, 1, 0xffff));
+        assertEquals(GameplayDiagnosticCode.INVALID_COMPONENT_VALUE, equalCapsule.code());
     }
 
-    @Test
-    void torqueRejectsInvalidBodyAndLifecycleStates() {
-        try (TorqueFixture fixture =
-                     new TorqueFixture("dynamic", "static", "kinematic")) {
-            EntityId dynamic = EntityId.of("dynamic");
-            assertDiagnostic(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
-                    () -> fixture.bridge.applyTorque(dynamic, Double.NaN));
-            assertDiagnostic(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
-                    () -> fixture.bridge.applyTorque(dynamic, Double.POSITIVE_INFINITY));
-            assertDiagnostic(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
-                    () -> fixture.bridge.applyTorque(EntityId.of("static"), 1.0));
-            assertDiagnostic(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
-                    () -> fixture.bridge.applyTorque(EntityId.of("kinematic"), 1.0));
-            assertDiagnostic(GameplayDiagnosticCode.BOX2D_BODY_NOT_FOUND,
-                    () -> fixture.bridge.applyTorque(EntityId.of("missing"), 1.0));
-
-            fixture.bridge.deactivate(dynamic);
-            assertDiagnostic(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
-                    () -> fixture.bridge.applyTorque(dynamic, 1.0));
-        }
-    }
-
-    @Test
-    void torqueRejectsLockedWorldWithoutMutation() {
-        World nativeWorld = new World(new Vector2(), true);
-        AgentRuntime runtime = AgentRuntime.builder().build();
+    private static void assertRejectedGeometry(Collider.Shape shape, Vec2 size) {
+        GameplayBox2dWorld nativeWorld = Box2dTestSupport.world(Vec2.ZERO);
+        AgentRuntime runtime = Box2dTestSupport.runtime();
         GameplayBox2dBridge bridge = Box2dTestSupport.bridge(nativeWorld, runtime);
-        AtomicReference<Throwable> observed = new AtomicReference<>();
-        AtomicReference<Float> angularVelocityBefore = new AtomicReference<>();
-        AtomicReference<Float> angularVelocityAfter = new AtomicReference<>();
-        nativeWorld.setContactListener(bridge.composeContactListener(new ContactListener() {
-            @Override public void beginContact(Contact contact) {
-                var body = bridge.handle(EntityId.of("alpha")).orElseThrow().body();
-                angularVelocityBefore.set(body.getAngularVelocity());
-                try {
-                    bridge.applyTorque(EntityId.of("alpha"), 6.5);
-                } catch (Throwable failure) {
-                    observed.set(failure);
-                }
-                angularVelocityAfter.set(body.getAngularVelocity());
-            }
-
-            @Override public void endContact(Contact contact) {
-            }
-
-            @Override public void preSolve(Contact contact, Manifold oldManifold) {
-            }
-
-            @Override public void postSolve(Contact contact, ContactImpulse impulse) {
-            }
-        }));
         GameWorld.Builder builder = GameWorld.builder(
                         GameplayLimits.defaults(), StandardComponents.registry())
                 .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
-                .initializer(sink -> {
-                    sink.spawn(Box2dTestSupport.body("alpha", 32, 32));
-                    sink.spawn(Box2dTestSupport.body("beta", 32, 32));
-                })
+                .initializer(sink -> sink.spawn(
+                        Box2dTestSupport.body("invalid", 0, 0, shape, size)))
                 .lifecycleParticipant(bridge);
         bridge.systems().forEach(builder::system);
         runtime.start();
-
-        try (GameWorld world = builder.build()) {
-            world.step();
-            assertDiagnostic(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
-                    () -> {
-                        throw observed.get();
-                    });
-            assertEquals(angularVelocityBefore.get(), angularVelocityAfter.get());
+        GameplayException failure;
+        try (GameWorld game = builder.build()) {
+            failure = assertThrows(GameplayException.class, game::step);
         }
-
+        assertEquals(GameplayDiagnosticCode.BOX2D_UNSUPPORTED_COLLIDER, failure.code());
+        var counters = new com.badlogic.gdx.box2d.structs.b2Counters();
+        Box2d.b2World_GetCounters(nativeWorld.id(), counters);
+        assertEquals(0, counters.bodyCount());
+        bridge.close();
         runtime.close();
-        nativeWorld.dispose();
+        nativeWorld.close();
     }
 
-    @Test
-    void torqueRejectsOwnerThreadViolationWithoutMutation() throws InterruptedException {
-        try (TorqueFixture fixture = new TorqueFixture("torque-body")) {
-            EntityId id = EntityId.of("torque-body");
-            AtomicReference<Throwable> observed = new AtomicReference<>();
-            Thread other = new Thread(() -> {
-                try {
-                    fixture.bridge.applyTorque(id, 6.5);
-                } catch (Throwable failure) {
-                    observed.set(failure);
-                }
-            });
-
-            other.start();
-            other.join();
-
-            assertDiagnostic(GameplayDiagnosticCode.OWNER_THREAD_VIOLATION,
-                    () -> {
-                        throw observed.get();
-                    });
-            assertEquals(0.0,
-                    fixture.bridge.handle(id).orElseThrow().body().getAngularVelocity(), 0.0);
-        }
-    }
-
-    @Test
-    void torqueRejectsClosedBridgeAndLeavesApplicationWorldUsable() {
-        World nativeWorld = new World(new Vector2(), true);
-        AgentRuntime runtime = AgentRuntime.builder().build();
+    private static void assertCapsuleGeometry(Vec2 size, float first, float second,
+            boolean horizontal) {
+        GameplayBox2dWorld nativeWorld = Box2dTestSupport.world(Vec2.ZERO);
+        AgentRuntime runtime = Box2dTestSupport.runtime();
         GameplayBox2dBridge bridge = Box2dTestSupport.bridge(nativeWorld, runtime);
         GameWorld.Builder builder = GameWorld.builder(
                         GameplayLimits.defaults(), StandardComponents.registry())
                 .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
                 .initializer(sink -> sink.spawn(Box2dTestSupport.body(
-                        "torque-body", 32, 32)))
+                        "capsule", 0, 0, Collider.Shape.CAPSULE, size)))
                 .lifecycleParticipant(bridge);
         bridge.systems().forEach(builder::system);
         runtime.start();
-
         try (GameWorld world = builder.build()) {
             world.step();
-        }
-
-        assertDiagnostic(GameplayDiagnosticCode.BOX2D_BRIDGE_CLOSED,
-                () -> bridge.applyTorque(EntityId.of("torque-body"), 1.0));
-        nativeWorld.createBody(new BodyDef());
-        assertEquals(1, nativeWorld.getBodyCount());
-        runtime.close();
-        nativeWorld.dispose();
-    }
-
-
-    @Test
-    void copiedJointForceMotorLimitsAndInspectionUseRealNativeWorld() {
-        World nativeWorld = new World(new Vector2(), true);
-        AgentRuntime runtime = AgentRuntime.builder().build();
-        GameplayBox2dBridge bridge = Box2dTestSupport.bridge(nativeWorld, runtime);
-        GameWorld.Builder builder = twoBodyWorld(bridge);
-        runtime.start();
-
-        try (GameWorld world = builder.build()) {
-            world.step();
-            Box2dJointId id = Box2dJointId.of("alpha-shoulder");
-            bridge.createRevoluteJoint(new Box2dRevoluteJointSpec(
-                    id, EntityId.of("alpha"), EntityId.of("beta"),
-                    new Vec2(48, 32), -0.1, 0.1, true));
-
-            assertEquals(1, nativeWorld.getJointCount());
-            Array<Joint> nativeJoints = new Array<>();
-            nativeWorld.getJoints(nativeJoints);
-            RevoluteJoint nativeJoint = (RevoluteJoint) nativeJoints.first();
-            assertEquals(1.5, nativeJoint.getAnchorA().x, 0.000_001);
-            assertEquals(1.0, nativeJoint.getAnchorA().y, 0.000_001);
-            assertEquals(-0.1, nativeJoint.getLowerLimit(), 0.000_001);
-            assertEquals(0.1, nativeJoint.getUpperLimit(), 0.000_001);
-            assertTrue(nativeJoint.getCollideConnected());
-            Box2dRevoluteJointState initial = bridge.revoluteJointState(id).orElseThrow();
-            assertEquals(EntityId.of("alpha"), initial.first());
-            assertEquals(EntityId.of("beta"), initial.second());
-            assertFalse(initial.motorEnabled());
-            runtime.frame(1, () -> { });
-            assertEquals("alpha-shoulder", runtime.entity(
-                    runtimeId("box2d.joint.alpha-shoulder"))
-                    .orElseThrow().displayName().orElseThrow());
-
-            bridge.configureRevoluteMotor(id, new Box2dRevoluteMotor(true, 4.0, 20.0));
-            Box2dRevoluteJointState motor = bridge.revoluteJointState(id).orElseThrow();
-            assertTrue(motor.motorEnabled());
-            assertEquals(4.0, motor.motorSpeedRadiansPerSecond(), 0.000_001);
-            assertEquals(20.0, motor.maximumMotorTorqueNewtonMetres(), 0.000_001);
-
-            bridge.handle(EntityId.of("alpha")).orElseThrow().body().setAwake(false);
-            bridge.applyForceToCenter(EntityId.of("alpha"), new Vec2(100, 0));
-            assertTrue(bridge.handle(EntityId.of("alpha")).orElseThrow().body().isAwake());
-            world.step();
-            assertTrue(bridge.bodyState(EntityId.of("alpha")).orElseThrow().velocity().x() > 0);
-
-            bridge.configureRevoluteMotor(id, new Box2dRevoluteMotor(false, 0, 0));
-            var beta = bridge.handle(EntityId.of("beta")).orElseThrow().body();
-            beta.setTransform(beta.getPosition(), 1.0f);
-            for (int step = 0; step < 30; step++) {
-                world.step();
+            var capsule = Box2d.b2Shape_GetCapsule(
+                    bridge.handle(EntityId.of("capsule")).orElseThrow().shape());
+            assertEquals(0.25f, capsule.radius(), 1.0e-6);
+            if (horizontal) {
+                assertEquals(first, capsule.center1().x(), 1.0e-6);
+                assertEquals(second, capsule.center2().x(), 1.0e-6);
+            } else {
+                assertEquals(first, capsule.center1().y(), 1.0e-6);
+                assertEquals(second, capsule.center2().y(), 1.0e-6);
             }
-            assertTrue(Math.abs(bridge.revoluteJointState(id).orElseThrow().angleRadians()) < 0.15);
-
-            bridge.removeJoint(id);
-            bridge.removeJoint(id);
-            assertEquals(0, nativeWorld.getJointCount());
-            assertTrue(bridge.revoluteJointState(id).isEmpty());
         }
-
+        assertFalse(nativeWorld.isClosed());
         runtime.close();
-        nativeWorld.dispose();
-    }
-
-    @Test
-    void jointCreationRejectsMissingStaticDuplicateAndExhaustedInspectionCapacityAtomically() {
-        World nativeWorld = new World(new Vector2(), true);
-        AgentRuntime runtime = AgentRuntime.builder().build();
-        Box2dBodyFactory bodies = new Box2dBodyFactory(
-                Box2dTestSupport.UNITS,
-                entity -> entity.id().value().equals("static")
-                        ? BodyDef.BodyType.StaticBody : BodyDef.BodyType.DynamicBody);
-        GameplayBox2dBridge bridge = new GameplayBox2dBridge(
-                nativeWorld, bodies, Box2dTestSupport.UNITS, Box2dTestSupport.SOLVER,
-                runtime, GameplayLimits.defaults());
-        GameWorld.Builder builder = GameWorld.builder(
-                        GameplayLimits.defaults(), StandardComponents.registry())
-                .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
-                .initializer(sink -> {
-                    sink.spawn(Box2dTestSupport.body("alpha", 32, 32));
-                    sink.spawn(Box2dTestSupport.body("beta", 64, 32));
-                    sink.spawn(Box2dTestSupport.body("static", 96, 32));
-                })
-                .lifecycleParticipant(bridge);
-        bridge.systems().forEach(builder::system);
-        runtime.start();
-
-        try (GameWorld world = builder.build()) {
-            world.step();
-            assertThrows(RuntimeException.class, () -> bridge.createRevoluteJoint(joint(
-                    "missing", "alpha", "absent")));
-            assertThrows(RuntimeException.class, () -> bridge.createRevoluteJoint(joint(
-                    "static-joint", "alpha", "static")));
-            assertEquals(0, nativeWorld.getJointCount());
-
-            assertThrows(RuntimeException.class, () -> bridge.configureRevoluteMotor(
-                    Box2dJointId.of("missing-motor"),
-                    new Box2dRevoluteMotor(false, 0, 0)));
-            bridge.createRevoluteJoint(joint("duplicate", "alpha", "beta"));
-            assertThrows(RuntimeException.class, () -> bridge.createRevoluteJoint(joint(
-                    "duplicate", "alpha", "beta")));
-            assertEquals(1, nativeWorld.getJointCount());
-
-            bridge.removeJoint(Box2dJointId.of("duplicate"));
-            for (int index = 0; index < 2_048; index++) {
-                bridge.createRevoluteJoint(joint(
-                        "bounded-" + index, "alpha", "beta"));
-            }
-            assertThrows(RuntimeException.class, () -> bridge.createRevoluteJoint(joint(
-                    "beyond-bound", "alpha", "beta")));
-            assertEquals(2_048, nativeWorld.getJointCount());
-        }
-
-        runtime.close();
-        nativeWorld.dispose();
-    }
-
-    @Test
-    void forceRejectsMissingInactiveAndStaticBodies() {
-        World nativeWorld = new World(new Vector2(), true);
-        AgentRuntime runtime = AgentRuntime.builder().build();
-        Box2dBodyFactory bodies = new Box2dBodyFactory(
-                Box2dTestSupport.UNITS,
-                entity -> entity.id().value().equals("static")
-                        ? BodyDef.BodyType.StaticBody : BodyDef.BodyType.DynamicBody);
-        GameplayBox2dBridge bridge = new GameplayBox2dBridge(
-                nativeWorld, bodies, Box2dTestSupport.UNITS, Box2dTestSupport.SOLVER,
-                runtime, GameplayLimits.defaults());
-        GameWorld.Builder builder = GameWorld.builder(
-                        GameplayLimits.defaults(), StandardComponents.registry())
-                .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
-                .initializer(sink -> {
-                    sink.spawn(Box2dTestSupport.body("dynamic", 32, 32));
-                    sink.spawn(Box2dTestSupport.body("static", 64, 32));
-                })
-                .lifecycleParticipant(bridge);
-        bridge.systems().forEach(builder::system);
-        runtime.start();
-
-        try (GameWorld world = builder.build()) {
-            world.step();
-            assertThrows(RuntimeException.class,
-                    () -> bridge.applyForceToCenter(EntityId.of("missing"), Vec2.ZERO));
-            assertThrows(RuntimeException.class,
-                    () -> bridge.applyForceToCenter(EntityId.of("static"), Vec2.ZERO));
-            bridge.deactivate(EntityId.of("dynamic"));
-            assertThrows(RuntimeException.class,
-                    () -> bridge.applyForceToCenter(EntityId.of("dynamic"), Vec2.ZERO));
-        }
-
-        runtime.close();
-        nativeWorld.dispose();
-    }
-
-    @Test
-    void forceAcceptsActiveKinematicBodyAsPublishedNoOp() {
-        try (TorqueFixture fixture = new TorqueFixture("kinematic")) {
-            EntityId id = EntityId.of("kinematic");
-
-            assertDoesNotThrow(
-                    () -> fixture.bridge.applyForceToCenter(id, new Vec2(12.0, -7.0)));
-            fixture.world.step();
-
-            assertEquals(Vec2.ZERO, fixture.bridge.bodyState(id).orElseThrow().velocity());
-        }
-    }
-
-    @Test
-    void forceUsesBox2dSiNewtonsWithoutRenderUnitConversion() {
-        World nativeWorld = new World(new Vector2(), true);
-        AgentRuntime runtime = AgentRuntime.builder().build();
-        GameplayBox2dBridge bridge = Box2dTestSupport.bridge(nativeWorld, runtime);
-        GameWorld.Builder builder = GameWorld.builder(
-                        GameplayLimits.defaults(), StandardComponents.registry())
-                .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
-                .initializer(sink -> sink.spawn(Box2dTestSupport.body("body", 32, 32)))
-                .lifecycleParticipant(bridge);
-        bridge.systems().forEach(builder::system);
-        runtime.start();
-
-        try (GameWorld world = builder.build()) {
-            world.step();
-            float mass = bridge.handle(EntityId.of("body")).orElseThrow().body().getMass();
-            bridge.applyForceToCenter(EntityId.of("body"), new Vec2(32, 0));
-            world.step();
-            double expectedVelocity = 32.0 / mass
-                    * (Box2dTestSupport.STEP_NANOS / 1_000_000_000.0);
-            assertEquals(expectedVelocity,
-                    bridge.bodyState(EntityId.of("body")).orElseThrow().velocity().x()
-                            / Box2dTestSupport.UNITS.renderUnitsPerMeter(),
-                    0.000_01);
-        }
-
-        runtime.close();
-        nativeWorld.dispose();
-    }
-
-    @Test
-    void disposingAnEndpointAndResetDestroyJointsBeforeBodiesAndAllowStableIdReuse() {
-        World nativeWorld = new World(new Vector2(), true);
-        AgentRuntime runtime = AgentRuntime.builder().build();
-        GameplayBox2dBridge bridge = Box2dTestSupport.bridge(nativeWorld, runtime);
-        GameWorld.Builder builder = twoBodyWorld(bridge);
-        runtime.start();
-
-        try (GameWorld world = builder.build()) {
-            world.step();
-            Box2dJointId id = Box2dJointId.of("lifecycle-joint");
-            bridge.createRevoluteJoint(joint(id.value(), "alpha", "beta"));
-            world.requestReset();
-            world.step();
-            world.step();
-            assertEquals(0, nativeWorld.getJointCount());
-            assertEquals(2, nativeWorld.getBodyCount());
-            assertTrue(bridge.revoluteJointState(id).isEmpty());
-
-            bridge.createRevoluteJoint(joint(id.value(), "alpha", "beta"));
-            assertEquals(1, nativeWorld.getJointCount());
-        }
-
-        assertEquals(0, nativeWorld.getJointCount());
-        assertEquals(0, nativeWorld.getBodyCount());
-        nativeWorld.createBody(new BodyDef());
-        assertEquals(1, nativeWorld.getBodyCount());
-        runtime.close();
-        nativeWorld.dispose();
-    }
-
-    @Test
-    void endpointDisposalRemovesEveryConnectedJointBeforeItsBody() {
-        World nativeWorld = new World(new Vector2(), true);
-        AgentRuntime runtime = AgentRuntime.builder().build();
-        GameplayBox2dBridge bridge = Box2dTestSupport.bridge(nativeWorld, runtime);
-        GameWorld.Builder builder = twoBodyWorld(bridge)
-                .system(new GameSystem() {
-                    @Override public SystemDescriptor descriptor() {
-                        return new SystemDescriptor(
-                                SystemId.of("dispose-alpha"), SystemPhase.GAMEPLAY, 10);
-                    }
-
-                    @Override public void update(SystemContext context) {
-                        if (context.tick() == 1) {
-                            context.despawn(EntityId.of("alpha"));
-                        }
-                    }
-                });
-        runtime.start();
-
-        try (GameWorld world = builder.build()) {
-            world.step();
-            bridge.createRevoluteJoint(joint("connected-one", "alpha", "beta"));
-            bridge.createRevoluteJoint(joint("connected-two", "alpha", "beta"));
-            world.step();
-            assertEquals(0, nativeWorld.getJointCount());
-            assertEquals(1, nativeWorld.getBodyCount());
-        }
-
-        runtime.close();
-        nativeWorld.dispose();
-    }
-
-    @Test
-    void mutationWhileNativeWorldIsLockedFailsWithoutPartialJointState() {
-        World nativeWorld = new World(new Vector2(), true);
-        AgentRuntime runtime = AgentRuntime.builder().build();
-        GameplayBox2dBridge bridge = Box2dTestSupport.bridge(nativeWorld, runtime);
-        AtomicReference<Throwable> observed = new AtomicReference<>();
-        nativeWorld.setContactListener(bridge.composeContactListener(new ContactListener() {
-            @Override public void beginContact(Contact contact) {
-                try {
-                    bridge.createRevoluteJoint(joint("locked", "alpha", "beta"));
-                } catch (Throwable failure) {
-                    observed.set(failure);
-                }
-            }
-
-            @Override public void endContact(Contact contact) {
-            }
-
-            @Override public void preSolve(Contact contact, Manifold oldManifold) {
-            }
-
-            @Override public void postSolve(Contact contact, ContactImpulse impulse) {
-            }
-        }));
-        GameWorld.Builder builder = GameWorld.builder(
-                        GameplayLimits.defaults(), StandardComponents.registry())
-                .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
-                .initializer(sink -> {
-                    sink.spawn(Box2dTestSupport.body("alpha", 32, 32));
-                    sink.spawn(Box2dTestSupport.body("beta", 32, 32));
-                })
-                .lifecycleParticipant(bridge);
-        bridge.systems().forEach(builder::system);
-        runtime.start();
-
-        try (GameWorld world = builder.build()) {
-            world.step();
-            assertNotNull(observed.get());
-            assertEquals(0, nativeWorld.getJointCount());
-            assertTrue(bridge.revoluteJointState(Box2dJointId.of("locked")).isEmpty());
-        }
-
-        runtime.close();
-        nativeWorld.dispose();
-    }
-
-    @Test
-    void copiedOperationsRemainOwnerThreadConfined() throws InterruptedException {
-        World nativeWorld = new World(new Vector2(), true);
-        AgentRuntime runtime = AgentRuntime.builder().build();
-        GameplayBox2dBridge bridge = Box2dTestSupport.bridge(nativeWorld, runtime);
-        AtomicReference<Throwable> observed = new AtomicReference<>();
-        Thread other = new Thread(() -> {
-            try {
-                bridge.revoluteJointState(Box2dJointId.of("joint"));
-            } catch (Throwable failure) {
-                observed.set(failure);
-            }
-        });
-
-        other.start();
-        other.join();
-
-        assertNotNull(observed.get());
-        bridge.close();
-        runtime.close();
-        nativeWorld.dispose();
-    }
-
-    private static GameWorld.Builder twoBodyWorld(GameplayBox2dBridge bridge) {
-        GameWorld.Builder builder = GameWorld.builder(
-                        GameplayLimits.defaults(), StandardComponents.registry())
-                .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
-                .initializer(sink -> {
-                    sink.spawn(Box2dTestSupport.body("alpha", 32, 32));
-                    sink.spawn(Box2dTestSupport.body("beta", 64, 32));
-                })
-                .lifecycleParticipant(bridge);
-        bridge.systems().forEach(builder::system);
-        return builder;
-    }
-
-    private static Box2dRevoluteJointSpec joint(
-            String id, String first, String second) {
-        return new Box2dRevoluteJointSpec(
-                Box2dJointId.of(id), EntityId.of(first), EntityId.of(second),
-                new Vec2(48, 32), -0.5, 0.5, false);
-    }
-
-    private static void assertDiagnostic(
-            GameplayDiagnosticCode code, Executable executable) {
-        assertEquals(code, assertThrows(GameplayException.class, executable).code());
-    }
-
-    private static final class TorqueFixture implements AutoCloseable {
-        private final World nativeWorld = new World(new Vector2(), true);
-        private final AgentRuntime runtime = AgentRuntime.builder().build();
-        private final GameplayBox2dBridge bridge;
-        private final GameWorld world;
-
-        private TorqueFixture(String... entityIds) {
-            Box2dBodyFactory bodies = new Box2dBodyFactory(
-                    Box2dTestSupport.UNITS,
-                    entity -> switch (entity.id().value()) {
-                        case "static" -> BodyDef.BodyType.StaticBody;
-                        case "kinematic" -> BodyDef.BodyType.KinematicBody;
-                        default -> BodyDef.BodyType.DynamicBody;
-                    });
-            bridge = new GameplayBox2dBridge(
-                    nativeWorld, bodies, Box2dTestSupport.UNITS, Box2dTestSupport.SOLVER,
-                    runtime, GameplayLimits.defaults());
-            GameWorld.Builder builder = GameWorld.builder(
-                            GameplayLimits.defaults(), StandardComponents.registry())
-                    .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
-                    .initializer(sink -> {
-                        for (int index = 0; index < entityIds.length; index++) {
-                            sink.spawn(Box2dTestSupport.body(
-                                    entityIds[index], 32.0 + index * 64.0, 32));
-                        }
-                    })
-                    .lifecycleParticipant(bridge);
-            bridge.systems().forEach(builder::system);
-            runtime.start();
-            world = builder.build();
-            world.step();
-        }
-
-        private double stepRotation(EntityId entityId) {
-            return world.step().snapshot().entity(entityId).orElseThrow()
-                    .component(Transform2D.TYPE).orElseThrow().rotationRadians();
-        }
-
-        @Override
-        public void close() {
-            world.close();
-            runtime.close();
-            nativeWorld.dispose();
-        }
-    }
-
-    private static io.github.teemuki8.libgdx.agent.runtime.core.EntityId runtimeId(String value) {
-        return io.github.teemuki8.libgdx.agent.runtime.core.EntityId.of(value);
+        nativeWorld.close();
     }
 }

@@ -21,7 +21,7 @@ dependencies {
     implementation(libs.markup.runtime)
     testImplementation(libs.jackson.databind)
     runtimeOnly(variantOf(libs.gdx.platform) { classifier("natives-desktop") })
-    runtimeOnly(variantOf(libs.gdx.box2d.platform) { classifier("natives-desktop") })
+    runtimeOnly(variantOf(libs.gdx.box2d3.platform) { classifier("natives-desktop") })
     runtimeOnly(libs.slf4j.nop)
 }
 
@@ -41,8 +41,10 @@ tasks.jar {
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
-    from(configurations.runtimeClasspath.get().map {
-        if (it.isDirectory) it else zipTree(it)
+    from({
+        configurations.runtimeClasspath.get().map {
+            if (it.isDirectory) it else zipTree(it)
+        }
     })
 }
 

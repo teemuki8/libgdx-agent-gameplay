@@ -2,80 +2,56 @@ package io.github.teemuki8.libgdx.agent.gameplay.box2d;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.badlogic.gdx.math.Vector2;
-import com.badlogic.gdx.physics.box2d.World;
+import com.badlogic.gdx.box2d.Box2d;
 import io.github.teemuki8.libgdx.agent.gameplay.core.GameplayLimits;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.StandardComponents;
-import io.github.teemuki8.libgdx.agent.gameplay.core.system.GameSystem;
-import io.github.teemuki8.libgdx.agent.gameplay.core.system.SystemContext;
-import io.github.teemuki8.libgdx.agent.gameplay.core.system.SystemDescriptor;
-import io.github.teemuki8.libgdx.agent.gameplay.core.system.SystemPhase;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId;
-import io.github.teemuki8.libgdx.agent.gameplay.core.value.SystemId;
+import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec2;
 import io.github.teemuki8.libgdx.agent.gameplay.core.world.GameWorld;
 import io.github.teemuki8.libgdx.agent.runtime.core.AgentRuntime;
-import java.util.ArrayList;
-import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 final class Box2dDisposalTest {
-    @BeforeAll
-    static void initializeNatives() {
-        Box2dTestSupport.initializeNatives();
-    }
+    @BeforeAll static void initializeNatives() { Box2dTestSupport.initializeNatives(); }
 
     @Test
-    void logicalRemovalPrecedesRuntimeCaptureAndNativeDestructionFollowsIt() {
-        World nativeWorld = new World(new Vector2(), true);
-        AgentRuntime runtime = AgentRuntime.builder().build();
+    void bridgeDestroysJointsBeforeBodiesAndLeavesApplicationWorldLive() {
+        GameplayBox2dWorld nativeWorld = Box2dTestSupport.world(Vec2.ZERO);
+        AgentRuntime runtime = Box2dTestSupport.runtime();
         GameplayBox2dBridge bridge = Box2dTestSupport.bridge(nativeWorld, runtime);
-        List<String> observed = new ArrayList<>();
         GameWorld.Builder builder = GameWorld.builder(
                         GameplayLimits.defaults(), StandardComponents.registry())
                 .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
-                .initializer(sink -> sink.spawn(Box2dTestSupport.body("player", 32, 32)))
-                .lifecycleParticipant(bridge)
-                .system(new GameSystem() {
-                    @Override public SystemDescriptor descriptor() {
-                        return new SystemDescriptor(
-                                SystemId.of("remove-player"), SystemPhase.GAMEPLAY, 10);
-                    }
-
-                    @Override public void update(SystemContext context) {
-                        if (context.tick() == 1) {
-                            context.despawn(EntityId.of("player"));
-                        }
-                    }
-                })
-                .system(new GameSystem() {
-                    @Override public SystemDescriptor descriptor() {
-                        return new SystemDescriptor(
-                                SystemId.of("observe-native"), SystemPhase.RUNTIME_CAPTURE, 10);
-                    }
-
-                    @Override public void update(SystemContext context) {
-                        if (context.tick() == 1) {
-                            assertFalse(bridge.handle(EntityId.of("player"))
-                                    .orElseThrow().body().isActive());
-                            observed.add("runtime-capture:" + nativeWorld.getBodyCount());
-                        }
-                    }
-                });
+                .initializer(sink -> {
+                    sink.spawn(Box2dTestSupport.body("first", 0, 0));
+                    sink.spawn(Box2dTestSupport.body("second", 32, 0));
+                }).lifecycleParticipant(bridge);
         bridge.systems().forEach(builder::system);
         runtime.start();
-
+        com.badlogic.gdx.box2d.structs.b2BodyId firstBody;
+        var counters = new com.badlogic.gdx.box2d.structs.b2Counters();
         try (GameWorld world = builder.build()) {
             world.step();
-            world.step();
-            observed.add("after-step:" + nativeWorld.getBodyCount());
+            firstBody = bridge.handle(EntityId.of("first")).orElseThrow().body();
+            Box2dJointId id = Box2dJointId.of("connected");
+            bridge.createRevoluteJoint(new Box2dRevoluteJointSpec(id,
+                    EntityId.of("first"), EntityId.of("second"),
+                    new Vec2(16, 0), -0.2, 0.2, false));
+            assertTrue(Box2d.b2Body_IsValid(firstBody));
+            Box2d.b2World_GetCounters(nativeWorld.id(), counters);
+            assertEquals(2, counters.bodyCount());
+            assertEquals(1, counters.jointCount());
         }
-
-        assertEquals(List.of("runtime-capture:1", "after-step:0"), observed);
-        bridge.close();
+        assertFalse(Box2d.b2Body_IsValid(firstBody));
+        Box2d.b2World_GetCounters(nativeWorld.id(), counters);
+        assertEquals(0, counters.bodyCount());
+        assertEquals(0, counters.jointCount());
+        assertTrue(Box2d.b2World_IsValid(nativeWorld.id()));
         bridge.close();
         runtime.close();
-        nativeWorld.dispose();
+        nativeWorld.close();
     }
 }

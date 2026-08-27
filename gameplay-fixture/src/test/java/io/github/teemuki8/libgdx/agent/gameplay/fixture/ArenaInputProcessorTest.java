@@ -4,8 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.Input;
-import com.badlogic.gdx.physics.box2d.Box2D;
-import com.badlogic.gdx.utils.GdxNativesLoader;
+import com.badlogic.gdx.box2d.Box2d;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Movement;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform2D;
 import org.junit.jupiter.api.BeforeAll;
@@ -14,8 +13,7 @@ import org.junit.jupiter.api.Test;
 final class ArenaInputProcessorTest {
     @BeforeAll
     static void initializeNatives() {
-        GdxNativesLoader.load();
-        Box2D.init();
+        Box2d.initialize();
     }
 
     @Test

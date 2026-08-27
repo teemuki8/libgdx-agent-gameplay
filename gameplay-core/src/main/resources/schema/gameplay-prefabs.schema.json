@@ -101,7 +101,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["type", "shape", "size"],
       "properties": {
-        "type": {"const": "collider"}, "shape": {"enum": ["box", "circle"]},
+        "type": {"const": "collider"}, "shape": {"enum": ["box", "circle", "capsule"]},
         "size": {"$ref": "#/$defs/vec2"}, "offset": {"$ref": "#/$defs/vec2"},
         "sensor": {"type": "boolean"},
         "categoryBits": {"type": "integer", "minimum": 0, "maximum": 65535},
