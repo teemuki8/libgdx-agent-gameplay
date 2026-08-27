@@ -11,10 +11,10 @@ application {
 }
 
 dependencies {
-    implementation("io.github.teemuki8:gameplay-core:0.1.0-SNAPSHOT")
-    implementation("io.github.teemuki8:gameplay-libgdx:0.1.0-SNAPSHOT")
-    implementation("io.github.teemuki8:gameplay-runtime:0.1.0-SNAPSHOT")
-    implementation("io.github.teemuki8:gameplay-box2d:0.1.0-SNAPSHOT")
+    implementation("io.github.teemuki8:gameplay-core:1.0.0-SNAPSHOT")
+    implementation("io.github.teemuki8:gameplay-libgdx:1.0.0-SNAPSHOT")
+    implementation("io.github.teemuki8:gameplay-runtime:1.0.0-SNAPSHOT")
+    implementation("io.github.teemuki8:gameplay-box2d:1.0.0-SNAPSHOT")
 }
 
 tasks.withType<JavaCompile>().configureEach {
