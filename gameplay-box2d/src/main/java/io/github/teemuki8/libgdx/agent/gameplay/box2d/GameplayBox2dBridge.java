@@ -124,7 +124,15 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
         return handle == null ? Optional.empty() : Optional.of(handle.state(units));
     }
 
-    /** Applies copied pose and velocity while enabling one disabled mapped dynamic body. */
+    /**
+     * Applies copied pose and velocity while enabling and waking one disabled mapped dynamic body.
+     *
+     * <p>Call this only on the bridge owner thread while the world is unlocked. To replace a
+     * bridge-owned attachment, first deactivate the body and remove its previous joint, then
+     * activate it and create the replacement joint. Native body identity never enters this API.
+     *
+     * @param activation stable entity plus copied render-unit pose and velocity
+     */
     public void activate(Box2dBodyActivation activation) {
         requireMutable("activate-disabled-body");
         Box2dBodyActivation checked = Objects.requireNonNull(activation, "activation");
@@ -147,7 +155,14 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
         Box2d.b2Body_SetAwake(handle.body(), true);
     }
 
-    /** Creates one bridge-owned revolute joint from copied endpoints and world anchor. */
+    /**
+     * Creates one bridge-owned revolute joint from stable endpoints and a copied world anchor.
+     *
+     * <p>Call this after activating an endpoint when replacing an attachment. The bridge resolves
+     * both private native bodies internally.
+     *
+     * @param spec stable joint ID, endpoint IDs, copied anchor, limits, and collision policy
+     */
     public void createRevoluteJoint(Box2dRevoluteJointSpec spec) {
         requireMutable("create-revolute-joint");
         Box2dRevoluteJointSpec checked = Objects.requireNonNull(spec, "spec");
@@ -249,7 +264,13 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
                 Box2d.b2RevoluteJoint_GetMaxMotorTorque(owned.joint())));
     }
 
-    /** Removes a bridge-owned joint; an absent ID is already removed. */
+    /**
+     * Removes a bridge-owned joint; an absent stable ID is already removed.
+     *
+     * <p>Removing a joint never exposes or invalidates either endpoint's private native body.
+     *
+     * @param id stable bridge-owned joint ID
+     */
     public void removeJoint(Box2dJointId id) {
         requireMutable("remove-joint");
         OwnedRevoluteJoint owned = joints.remove(Objects.requireNonNull(id, "id"));
@@ -303,7 +324,14 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
         return List.copyOf(hits);
     }
 
-    /** Deactivates one mapped body. */
+    /**
+     * Disables one mapped body while retaining its private native mapping.
+     *
+     * <p>This operation does not remove connected bridge-owned joints. Remove the old joint
+     * explicitly before reactivating the body at a copied pose and creating a replacement joint.
+     *
+     * @param entityId stable gameplay entity whose mapped body will be disabled
+     */
     public void deactivate(EntityId entityId) {
         requireMutable("deactivate-body");
         Box2dBodyHandle handle = requireHandle(entityId);

@@ -42,6 +42,49 @@ bridge.applyTorque(torsoId, torqueNewtonMetres);
 bridge.applyForce(torsoId, new Vec2(forceXNewtons, forceYNewtons), worldPointRenderUnits);
 ```
 
+## Replacing a dynamic attachment
+
+Perform the complete attachment transition on the bridge owner thread while the world is unlocked.
+The order is deliberate:
+
+1. Copy the destination palm's state through `bodyState`.
+2. Disable the attached dynamic body with `deactivate`.
+3. Remove its old bridge-owned joint with `removeJoint`.
+4. Enable the body at the copied palm-derived pose and velocity with `activate`.
+5. Create the replacement joint with `createRevoluteJoint`.
+
+```java
+Box2dBodyState palm = bridge.bodyState(palmId).orElseThrow();
+
+bridge.deactivate(weaponId);
+bridge.removeJoint(attachmentId);
+bridge.activate(new Box2dBodyActivation(
+        weaponId,
+        palm.positionRenderUnits(),
+        palm.angleRadians(),
+        palm.velocityRenderUnitsPerSecond(),
+        palm.angularVelocityRadiansPerSecond()));
+bridge.createRevoluteJoint(new Box2dRevoluteJointSpec(
+        attachmentId,
+        palmId,
+        weaponId,
+        palm.positionRenderUnits(),
+        lowerAngleRadians,
+        upperAngleRadians,
+        false));
+```
+
+`deactivate` preserves the bridge's private body mapping and does not implicitly remove connected
+joints. `removeJoint` is idempotent for an absent stable ID. `activate` rejects missing, enabled,
+static, or kinematic bodies; for a disabled mapped dynamic body it installs the copied transform
+and velocities, enables the body, and wakes it. Re-create the joint only after activation. All five
+operations require an open bridge on its owner thread; the four mutations also reject a locked
+world.
+
+The application must not retain or reconstruct `b2BodyId`, `b2ShapeId`, or `b2JointId` to implement
+this transition. Stable `EntityId`/`Box2dJointId` values and immutable copied state are the entire
+boundary. Native structs, pointers, closures, callback data, and buffers remain bridge-private.
+
 For bounded spatial evidence, call `raycast(new Box2dRaycastSpec(...))`. `maxHits` is 1 through 64;
 unknown shapes are ignored and copied hits are returned immutable, ordered by fraction then fixture
 ID. The call-scoped native closure is released on success and failure.
