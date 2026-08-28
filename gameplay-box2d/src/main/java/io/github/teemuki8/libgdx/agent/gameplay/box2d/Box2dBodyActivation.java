@@ -1,5 +1,7 @@
 package io.github.teemuki8.libgdx.agent.gameplay.box2d;
 
+import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnosticCode;
+import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec2;
 import java.util.Objects;
@@ -18,7 +20,12 @@ public record Box2dBodyActivation(
         Objects.requireNonNull(velocityRenderUnitsPerSecond, "velocityRenderUnitsPerSecond");
         if (!Double.isFinite(angleRadians)
                 || !Double.isFinite(angularVelocityRadiansPerSecond)) {
-            throw new IllegalArgumentException("activation angles and velocities must be finite");
+            throw GameplayException.validation(
+                    GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    "create-box2d-body-activation",
+                    "finite angle and angular velocity",
+                    angleRadians + ":" + angularVelocityRadiansPerSecond,
+                    "Replace NaN or infinity with finite copied dynamics.");
         }
     }
 }

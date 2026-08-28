@@ -127,9 +127,10 @@ final class GameplayBox2dBridgeTest {
                 () -> new Box2dBodyActivation(id, null, 0, Vec2.ZERO, 0));
         assertThrows(NullPointerException.class,
                 () -> new Box2dBodyActivation(id, Vec2.ZERO, 0, null, 0));
-        assertThrows(IllegalArgumentException.class,
-                () -> new Box2dBodyActivation(id, Vec2.ZERO, Double.NaN, Vec2.ZERO, 0));
-        assertThrows(IllegalArgumentException.class,
+        assertCode(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                () -> new Box2dBodyActivation(
+                        id, Vec2.ZERO, Double.NaN, Vec2.ZERO, 0));
+        assertCode(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
                 () -> new Box2dBodyActivation(
                         id, Vec2.ZERO, 0, Vec2.ZERO, Double.POSITIVE_INFINITY));
     }
