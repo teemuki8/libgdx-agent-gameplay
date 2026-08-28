@@ -3,8 +3,7 @@ package io.github.teemuki8.libgdx.agent.gameplay.fixture;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.badlogic.gdx.physics.box2d.Box2D;
-import com.badlogic.gdx.utils.GdxNativesLoader;
+import com.badlogic.gdx.box2d.Box2d;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Collider;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Sprite;
 import io.github.teemuki8.libgdx.agent.runtime.core.EntityId;
@@ -17,8 +16,7 @@ import org.junit.jupiter.api.Test;
 final class ArenaBox2dTest {
     @BeforeAll
     static void initializeNatives() {
-        GdxNativesLoader.load();
-        Box2D.init();
+        Box2d.initialize();
     }
 
     @Test

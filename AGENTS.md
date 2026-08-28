@@ -18,8 +18,8 @@ The integration libraries remain authoritative for their own contracts:
 3. `libgdx-agent-runtime`: typed runtime values, frames, causes/events, UI correlation, and Box2D
    inspection.
 
-Current baseline: JDK 25, Gradle wrapper 9.7.0, libGDX 1.14.2,
-`libgdx-agent-runtime` 2.2.0, `libgdx-ui-harness` 1.2.1, and `libgdx-ui-markup` 0.5.0.
+Current baseline: JDK 25, Gradle wrapper 9.7.0, libGDX core 1.14.2, official Box2D 3.1.1-0,
+`libgdx-agent-runtime` 3.0.0, `libgdx-ui-harness` 1.2.1, and `libgdx-ui-markup` 0.5.0.
 
 ## Module boundaries
 

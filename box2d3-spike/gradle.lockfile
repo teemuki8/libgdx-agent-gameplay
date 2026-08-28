@@ -1,9 +1,13 @@
 # This is a Gradle generated file for dependency locking.
 # Manual edits can break the build and are not advised.
 # This file is expected to be part of source control.
-# To regenerate this file, run: ./gradlew :gameplay-runtime:dependencies --write-locks
-com.fasterxml.jackson.core:jackson-core:2.22.1=runtimeClasspath,testRuntimeClasspath
-com.fasterxml.jackson:jackson-bom:2.22.1=runtimeClasspath,testRuntimeClasspath
+# To regenerate this file, run: ./gradlew :box2d3-spike:dependencies --write-locks
+com.badlogicgames.gdx:gdx-box2d-platform:3.1.1-0=testRuntimeClasspath
+com.badlogicgames.gdx:gdx-box2d:3.1.1-0=testCompileClasspath,testRuntimeClasspath
+com.badlogicgames.jnigen:jnigen-commons:3.1.0=testCompileClasspath,testRuntimeClasspath
+com.badlogicgames.jnigen:jnigen-loader:3.1.0=testCompileClasspath,testRuntimeClasspath
+com.badlogicgames.jnigen:jnigen-runtime-platform:3.1.0=testRuntimeClasspath
+com.badlogicgames.jnigen:jnigen-runtime:3.1.0=testCompileClasspath,testRuntimeClasspath
 com.google.code.findbugs:jsr305:3.0.2=checkstyle
 com.google.errorprone:error_prone_annotations:2.36.0=checkstyle
 com.google.guava:failureaccess:1.0.3=checkstyle
@@ -15,7 +19,6 @@ commons-beanutils:commons-beanutils:1.10.1=checkstyle
 commons-codec:commons-codec:1.15=checkstyle
 commons-collections:commons-collections:3.2.2=checkstyle
 info.picocli:picocli:4.7.7=checkstyle
-io.github.teemuki8:agent-runtime-core:3.0.0=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 net.sf.saxon:Saxon-HE:12.5=checkstyle
 org.antlr:antlr4-runtime:4.13.2=checkstyle
 org.apache.commons:commons-lang3:3.8.1=checkstyle
@@ -56,4 +59,4 @@ org.ow2.asm:asm-tree:9.9=jacocoAnt
 org.ow2.asm:asm:9.9=jacocoAnt
 org.reflections:reflections:0.10.2=checkstyle
 org.xmlresolver:xmlresolver:5.2.2=checkstyle
-empty=annotationProcessor,testAnnotationProcessor
+empty=annotationProcessor,compileClasspath,runtimeClasspath,testAnnotationProcessor

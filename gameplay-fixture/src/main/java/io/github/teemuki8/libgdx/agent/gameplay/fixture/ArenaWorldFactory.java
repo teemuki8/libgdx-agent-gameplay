@@ -1,13 +1,13 @@
 package io.github.teemuki8.libgdx.agent.gameplay.fixture;
 
 import com.badlogic.gdx.InputMultiplexer;
-import com.badlogic.gdx.math.Vector2;
-import com.badlogic.gdx.physics.box2d.BodyDef;
-import com.badlogic.gdx.physics.box2d.World;
 import io.github.teemuki8.libgdx.agent.gameplay.box2d.Box2dBodyFactory;
-import io.github.teemuki8.libgdx.agent.gameplay.box2d.Box2dSolverSettings;
+import io.github.teemuki8.libgdx.agent.gameplay.box2d.Box2dBodySpec;
+import io.github.teemuki8.libgdx.agent.gameplay.box2d.Box2dBodyType;
 import io.github.teemuki8.libgdx.agent.gameplay.box2d.Box2dUnitConversion;
 import io.github.teemuki8.libgdx.agent.gameplay.box2d.GameplayBox2dBridge;
+import io.github.teemuki8.libgdx.agent.gameplay.box2d.Box2dWorldSpec;
+import io.github.teemuki8.libgdx.agent.gameplay.box2d.GameplayBox2dWorld;
 import io.github.teemuki8.libgdx.agent.gameplay.core.GameplayLimits;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Collider;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Component;
@@ -75,7 +75,7 @@ public final class ArenaWorldFactory {
     public static ArenaSession openPlaying() {
         ArenaGameState state = new ArenaGameState();
         state.startPlaying();
-        World nativeWorld = new World(new Vector2(), true);
+        GameplayBox2dWorld nativeWorld = newNativeWorld();
         AgentRuntime runtime = AgentRuntime.builder().build();
         InputMultiplexer input = new InputMultiplexer();
         ArenaSession session = open(
@@ -87,7 +87,7 @@ public final class ArenaWorldFactory {
     /** Builds the render-thread fixture around caller-owned application resources. */
     static ArenaSession openApplication(
             ArenaGameState state,
-            World nativeWorld,
+            GameplayBox2dWorld nativeWorld,
             AgentRuntime runtime,
             InputMultiplexer input,
             GameplayRuntimeBridge gameplayRuntime,
@@ -99,7 +99,7 @@ public final class ArenaWorldFactory {
 
     private static ArenaSession open(
             ArenaGameState state,
-            World nativeWorld,
+            GameplayBox2dWorld nativeWorld,
             AgentRuntime runtime,
             InputMultiplexer input,
             GameplayRuntimeBridge gameplayRuntime,
@@ -109,12 +109,14 @@ public final class ArenaWorldFactory {
         Objects.requireNonNull(nativeWorld, "nativeWorld");
         Objects.requireNonNull(runtime, "runtime");
         Objects.requireNonNull(input, "input");
-        Box2dBodyFactory bodyFactory = new Box2dBodyFactory(UNITS, entity ->
-                entity.id().value().startsWith("wall-")
-                        ? BodyDef.BodyType.StaticBody : BodyDef.BodyType.DynamicBody);
+        Box2dBodyFactory bodyFactory = new Box2dBodyFactory(UNITS, entity -> {
+            Box2dBodyType type = entity.id().value().startsWith("wall-")
+                    ? Box2dBodyType.STATIC : Box2dBodyType.DYNAMIC;
+            return new Box2dBodySpec(type, type == Box2dBodyType.DYNAMIC ? 1.0 : 0.0,
+                    0.4, 0.0, 0.0, 0.0, 1.0, false, false);
+        });
         GameplayBox2dBridge physics = new GameplayBox2dBridge(
-                nativeWorld, bodyFactory, UNITS, new Box2dSolverSettings(6, 2),
-                runtime, GameplayLimits.defaults());
+                nativeWorld, bodyFactory, UNITS, runtime, GameplayLimits.defaults());
         WeaponSystem weapons = new WeaponSystem(
                 state, PREFABS.require(PrefabId.of("projectile")));
 
@@ -140,10 +142,13 @@ public final class ArenaWorldFactory {
         GameWorld world = builder.build();
         ArenaInputProcessor inputProcessor = new ArenaInputProcessor(world, state);
         input.addProcessor(inputProcessor);
-        nativeWorld.setContactListener(physics.contactListener());
         return new ArenaSession(
                 world, nativeWorld, runtime, physics, state, inputProcessor, input, weapons,
                 ownsNativeResources);
+    }
+
+    private static GameplayBox2dWorld newNativeWorld() {
+        return GameplayBox2dWorld.create(new Box2dWorldSpec(Vec2.ZERO, 4, 0.1));
     }
 
     /** Copies one prefab while replacing explicitly supplied standard components. */
@@ -247,7 +252,7 @@ public final class ArenaWorldFactory {
     /** Owns one fixture-only world, runtime, native world, and production input multiplexer. */
     public static final class ArenaSession implements AutoCloseable {
         private GameWorld world;
-        private World nativeWorld;
+        private GameplayBox2dWorld nativeWorld;
         private final AgentRuntime runtime;
         private GameplayBox2dBridge physics;
         private final ArenaGameState state;
@@ -259,7 +264,7 @@ public final class ArenaWorldFactory {
 
         private ArenaSession(
                 GameWorld world,
-                World nativeWorld,
+                GameplayBox2dWorld nativeWorld,
                 AgentRuntime runtime,
                 GameplayBox2dBridge physics,
                 ArenaGameState state,
@@ -313,8 +318,8 @@ public final class ArenaWorldFactory {
                 input.removeProcessor(inputProcessor);
                 world.close();
                 physics.close();
-                nativeWorld.dispose();
-                World replacementWorld = new World(new Vector2(), true);
+                nativeWorld.close();
+                GameplayBox2dWorld replacementWorld = newNativeWorld();
                 ArenaSession replacement = open(
                         state, replacementWorld, runtime, input, null, null, true);
                 world = replacement.world;
@@ -339,7 +344,7 @@ public final class ArenaWorldFactory {
             physics.close();
             if (ownsNativeResources) {
                 runtime.close();
-                nativeWorld.dispose();
+                nativeWorld.close();
             }
             closed = true;
         }

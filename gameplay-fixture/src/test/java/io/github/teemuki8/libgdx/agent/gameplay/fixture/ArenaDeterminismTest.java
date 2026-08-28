@@ -4,8 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.Input;
-import com.badlogic.gdx.physics.box2d.Box2D;
-import com.badlogic.gdx.utils.GdxNativesLoader;
+import com.badlogic.gdx.box2d.Box2d;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.teemuki8.libgdx.agent.gameplay.core.replay.CanonicalWorldEncoder;
@@ -21,8 +20,7 @@ import org.junit.jupiter.api.Test;
 final class ArenaDeterminismTest {
     @BeforeAll
     static void initializeNatives() {
-        GdxNativesLoader.load();
-        Box2D.init();
+        Box2d.initialize();
     }
 
     @Test

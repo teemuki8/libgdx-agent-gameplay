@@ -1,7 +1,8 @@
 [versions]
 gdx = "1.14.2"
+gdx-box2d3 = "3.1.1-0"
 jackson = "2.22.1"
-agent-runtime = "2.2.0"
+agent-runtime = "3.0.0"
 harness = "1.2.1"
 markup = "0.5.0"
 junit = "6.1.3"
@@ -14,6 +15,8 @@ gdx-lwjgl3 = { module = "com.badlogicgames.gdx:gdx-backend-lwjgl3", version.ref 
 gdx-box2d = { module = "com.badlogicgames.gdx:gdx-box2d", version.ref = "gdx" }
 gdx-platform = { module = "com.badlogicgames.gdx:gdx-platform", version.ref = "gdx" }
 gdx-box2d-platform = { module = "com.badlogicgames.gdx:gdx-box2d-platform", version.ref = "gdx" }
+gdx-box2d3 = { module = "com.badlogicgames.gdx:gdx-box2d", version.ref = "gdx-box2d3" }
+gdx-box2d3-platform = { module = "com.badlogicgames.gdx:gdx-box2d-platform", version.ref = "gdx-box2d3" }
 jackson-core = { module = "com.fasterxml.jackson.core:jackson-core", version.ref = "jackson" }
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
 agent-runtime-core = { module = "io.github.teemuki8:agent-runtime-core", version.ref = "agent-runtime" }

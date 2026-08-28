@@ -16,10 +16,11 @@ public record Collider(
     public static final ComponentType<Collider> TYPE =
             new ComponentType<>("collider", Collider.class);
 
-    /** Supported V1 collider geometries. */
+    /** Supported backend-neutral collider geometries. */
     public enum Shape {
         BOX,
-        CIRCLE
+        CIRCLE,
+        CAPSULE
     }
 
     /** Validates positive geometry and unsigned 16-bit filters. */
@@ -36,6 +37,14 @@ public record Collider(
                     "positive size and category/mask in [0,65535]",
                     "size=" + size + ",category=" + categoryBits + ",mask=" + maskBits,
                     "Use positive collider dimensions and unsigned 16-bit filter values.");
+        }
+        if (shape == Shape.CAPSULE && Double.compare(size.x(), size.y()) == 0) {
+            throw GameplayException.validation(
+                    GameplayDiagnosticCode.INVALID_COMPONENT_VALUE,
+                    "create-collider",
+                    "capsule with one dimension strictly larger than the other",
+                    "size=" + size,
+                    "Use CIRCLE for equal dimensions or lengthen one capsule axis.");
         }
     }
 }

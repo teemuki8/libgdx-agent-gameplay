@@ -123,7 +123,7 @@ val publishedModules = listOf(
     "gameplay-runtime",
     "gameplay-box2d",
 )
-val releaseVersion = providers.gradleProperty("releaseVersion").orElse("0.1.0-SNAPSHOT")
+val releaseVersion = providers.gradleProperty("releaseVersion").orElse("1.0.0-SNAPSHOT")
 val repositoryUrl = "https://github.com/teemuki8/libgdx-agent-gameplay"
 val mavenCentralStagingUrl =
     "https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/"
@@ -367,10 +367,21 @@ val apiCompatibilityTasks = publishedModules.map { module ->
                     "--old", baseline.singleFile.absolutePath,
                     "--new", current.absolutePath,
                     "--only-modified",
-                    "--error-on-binary-incompatibility",
-                    "--error-on-source-incompatibility",
                     "--ignore-missing-classes",
                 )
+                val currentMajor = releaseVersion.get().substringBefore('.').toInt()
+                val baselineMajor = apiBaselineVersion.get().substringBefore('.').toInt()
+                if (currentMajor > baselineMajor) {
+                    logger.lifecycle(
+                        "Reporting intentional major-version API breaks for $module "
+                            + "${apiBaselineVersion.get()} -> ${releaseVersion.get()}",
+                    )
+                } else {
+                    args(
+                        "--error-on-binary-incompatibility",
+                        "--error-on-source-incompatibility",
+                    )
+                }
             }
         }
     } else {
@@ -442,7 +453,8 @@ val verifyStackVersionContract = tasks.register("verifyStackVersionContract") {
         mapOf(
             "gdx" to "1.14.2",
             "jackson" to "2.22.1",
-            "agent-runtime" to "2.2.0",
+            "gdx-box2d3" to "3.1.1-0",
+            "agent-runtime" to "3.0.0",
             "harness" to "1.2.1",
             "markup" to "0.5.0",
             "junit" to "6.1.3",

@@ -9,7 +9,7 @@ trap cleanup EXIT
 
 repository_uri="$(realpath "$repository_directory")"
 ./gradlew \
-  -PreleaseVersion=0.1.0-SNAPSHOT \
+  -PreleaseVersion=1.0.0-SNAPSHOT \
   -PqualificationRepository="$repository_uri" \
   publishAllPublicationsToQualificationRepository \
   --no-daemon \

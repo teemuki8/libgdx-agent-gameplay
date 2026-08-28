@@ -9,8 +9,8 @@ For an authorized version `X.Y.Z`:
 1. Confirm clean `main`, exact remote-head parity, and green CI.
 2. Run `xvfb-run -a ./gradlew clean check javadoc apiCompatibility
    verifyPublicationArchives verifyPublishedPoms --warning-mode=fail`.
-3. Run `./scripts/verify-maven-local.sh`; it publishes `0.1.0-SNAPSHOT` to a disposable repository
-   and compiles/runs an external consumer against all four coordinates.
+3. Run `./scripts/verify-maven-local.sh`; it publishes the property-driven `1.0.0-SNAPSHOT` to a
+   disposable repository and compiles/runs an external consumer against all four coordinates.
 4. If a released baseline exists, repeat with `-PapiBaselineVersion=<previous-version>`.
 5. Refresh strict verification metadata after dependency/build-tool changes and review every
    binary, metadata, source, and IDEA-tooling addition.

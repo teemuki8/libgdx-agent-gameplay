@@ -26,6 +26,23 @@ final class StandardComponentCodecsTest {
                 ((Render) definition.components().get(Render.TYPE)).layer());
     }
 
+    @Test
+    void decodesGenuineCapsuleColliderShape() {
+        String json = """
+                {"schemaVersion":"gameplay-prefabs/1","prefabs":[{
+                  "id":"capsule","components":[
+                    {"type":"collider","shape":"capsule","size":[1,3]}
+                  ]
+                }]}
+                """;
+        PrefabDefinition definition = new PrefabParser(
+                StandardComponentCodecs.registry(), PrefabLimits.defaults())
+                .parse(json.getBytes(StandardCharsets.UTF_8))
+                .require(PrefabId.of("capsule"));
+        assertEquals(Collider.Shape.CAPSULE,
+                ((Collider) definition.components().get(Collider.TYPE)).shape());
+    }
+
     private static final String JSON = """
             {"schemaVersion":"gameplay-prefabs/1","prefabs":[{
               "id":"complete",
