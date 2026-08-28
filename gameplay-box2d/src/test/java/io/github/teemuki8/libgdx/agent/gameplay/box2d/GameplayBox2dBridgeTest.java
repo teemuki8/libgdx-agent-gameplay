@@ -21,7 +21,9 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec2;
 import io.github.teemuki8.libgdx.agent.gameplay.core.world.EntityDraft;
 import io.github.teemuki8.libgdx.agent.gameplay.core.world.GameWorld;
 import io.github.teemuki8.libgdx.agent.runtime.core.AgentRuntime;
+import java.lang.reflect.Field;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -117,6 +119,141 @@ final class GameplayBox2dBridgeTest {
     }
 
     @Test
+    void activationRejectsMissingOrNonFiniteCopiedValues() {
+        EntityId id = EntityId.of("body");
+        assertThrows(NullPointerException.class,
+                () -> new Box2dBodyActivation(null, Vec2.ZERO, 0, Vec2.ZERO, 0));
+        assertThrows(NullPointerException.class,
+                () -> new Box2dBodyActivation(id, null, 0, Vec2.ZERO, 0));
+        assertThrows(NullPointerException.class,
+                () -> new Box2dBodyActivation(id, Vec2.ZERO, 0, null, 0));
+        assertCode(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                () -> new Box2dBodyActivation(
+                        id, Vec2.ZERO, Double.NaN, Vec2.ZERO, 0));
+        assertCode(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                () -> new Box2dBodyActivation(
+                        id, Vec2.ZERO, 0, Vec2.ZERO, Double.POSITIVE_INFINITY));
+    }
+
+    @Test
+    void disabledDynamicBodyActivatesAtCopiedPoseAndVelocityAndUpdatesInspection() {
+        EntityId id = EntityId.of("body");
+        try (ActivationFixture fixture = activationFixture(
+                ignored -> bodySpec(Box2dBodyType.DYNAMIC),
+                Box2dTestSupport.body("body", 0, 0))) {
+            fixture.gameWorld().step();
+            fixture.bridge().deactivate(id);
+
+            fixture.bridge().activate(new Box2dBodyActivation(
+                    id, new Vec2(320, 160), Math.PI / 4,
+                    new Vec2(64, -32), 2.5));
+
+            Box2dBodyState state = fixture.bridge().bodyState(id).orElseThrow();
+            assertTrue(state.active());
+            assertEquals(new Vec2(320, 160), state.positionRenderUnits());
+            assertEquals(new Vec2(64, -32), state.velocityRenderUnitsPerSecond());
+            assertEquals(Math.PI / 4, state.angleRadians(), 1.0e-4);
+            assertEquals(2.5, state.angularVelocityRadiansPerSecond(), 1.0e-6);
+            fixture.runtime().frame(1, () -> { });
+            var active = fixture.runtime().entity(
+                    io.github.teemuki8.libgdx.agent.runtime.core.EntityId.of("box2d.body.body"))
+                    .orElseThrow().property("active").orElseThrow();
+            assertEquals(new io.github.teemuki8.libgdx.agent.runtime.core.RuntimeValue.BooleanValue(
+                    true), active);
+        }
+    }
+
+    @Test
+    void activationRejectsAlreadyEnabledMissingAndNonDynamicBodies() {
+        EntityId dynamic = EntityId.of("dynamic");
+        EntityId statik = EntityId.of("static");
+        EntityId kinematic = EntityId.of("kinematic");
+        Box2dBodySpecResolver resolver = entity -> bodySpec(switch (
+                entity.id().value()) {
+            case "static" -> Box2dBodyType.STATIC;
+            case "kinematic" -> Box2dBodyType.KINEMATIC;
+            default -> Box2dBodyType.DYNAMIC;
+        });
+        try (ActivationFixture fixture = activationFixture(resolver,
+                Box2dTestSupport.body("dynamic", 0, 0),
+                Box2dTestSupport.body("static", 64, 0),
+                Box2dTestSupport.body("kinematic", 128, 0))) {
+            fixture.gameWorld().step();
+
+            assertCode(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    () -> fixture.bridge().activate(activation(dynamic)));
+            assertCode(GameplayDiagnosticCode.BOX2D_BODY_NOT_FOUND,
+                    () -> fixture.bridge().activate(activation(EntityId.of("missing"))));
+            fixture.bridge().deactivate(statik);
+            fixture.bridge().deactivate(kinematic);
+            assertCode(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    () -> fixture.bridge().activate(activation(statik)));
+            assertCode(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    () -> fixture.bridge().activate(activation(kinematic)));
+        }
+    }
+
+    @Test
+    void activationRequiresUnlockedOwnerThreadAndOpenBridge() throws Exception {
+        EntityId id = EntityId.of("body");
+        try (ActivationFixture fixture = activationFixture(
+                ignored -> bodySpec(Box2dBodyType.DYNAMIC),
+                Box2dTestSupport.body("body", 0, 0))) {
+            fixture.gameWorld().step();
+            fixture.bridge().deactivate(id);
+
+            AtomicReference<Throwable> wrongThreadFailure = new AtomicReference<>();
+            Thread thread = new Thread(() -> {
+                try {
+                    fixture.bridge().activate(activation(id));
+                } catch (Throwable failure) {
+                    wrongThreadFailure.set(failure);
+                }
+            }, "activation-wrong-owner");
+            thread.start();
+            thread.join();
+            GameplayException ownerFailure =
+                    (GameplayException) wrongThreadFailure.get();
+            assertEquals(GameplayDiagnosticCode.OWNER_THREAD_VIOLATION, ownerFailure.code());
+
+            setStepping(fixture.nativeWorld(), true);
+            try {
+                assertThrows(IllegalStateException.class,
+                        () -> fixture.bridge().activate(activation(id)));
+            } finally {
+                setStepping(fixture.nativeWorld(), false);
+            }
+
+            fixture.gameWorld().close();
+            assertCode(GameplayDiagnosticCode.BOX2D_BRIDGE_CLOSED,
+                    () -> fixture.bridge().activate(activation(id)));
+        }
+    }
+
+    @Test
+    void activationUsesFreshMappedBodyAfterReset() {
+        EntityId id = EntityId.of("body");
+        try (ActivationFixture fixture = activationFixture(
+                ignored -> bodySpec(Box2dBodyType.DYNAMIC),
+                Box2dTestSupport.body("body", 0, 0))) {
+            fixture.gameWorld().step();
+            fixture.gameWorld().requestReset();
+            fixture.gameWorld().step();
+            assertTrue(fixture.bridge().bodyState(id).isEmpty());
+            fixture.gameWorld().step();
+            fixture.bridge().deactivate(id);
+
+            fixture.bridge().activate(new Box2dBodyActivation(
+                    id, new Vec2(96, 32), 0.25, new Vec2(-16, 8), -1.5));
+
+            Box2dBodyState state = fixture.bridge().bodyState(id).orElseThrow();
+            assertTrue(state.active());
+            assertEquals(new Vec2(96, 32), state.positionRenderUnits());
+            assertEquals(new Vec2(-16, 8), state.velocityRenderUnitsPerSecond());
+        }
+    }
+
+    @Test
     void horizontalAndVerticalCapsulesUseCompleteBounds() {
         assertCapsuleGeometry(new Vec2(64, 16), -0.75f, 0.75f, true);
         assertCapsuleGeometry(new Vec2(16, 64), -0.75f, 0.75f, false);
@@ -142,6 +279,58 @@ final class GameplayBox2dBridgeTest {
     void revoluteJointReferenceAnglePreservesNormalAndMirroredInitialPoses() {
         assertInitialJointPose(0.4, -0.3);
         assertInitialJointPose(-0.4, 0.3);
+    }
+
+    private static Box2dBodyActivation activation(EntityId id) {
+        return new Box2dBodyActivation(id, Vec2.ZERO, 0, Vec2.ZERO, 0);
+    }
+
+    private static Box2dBodySpec bodySpec(Box2dBodyType type) {
+        return new Box2dBodySpec(type, type == Box2dBodyType.DYNAMIC ? 1.0 : 0.0,
+                0.4, 0.0, 0.0, 0.0, 1.0, false, false);
+    }
+
+    private static ActivationFixture activationFixture(
+            Box2dBodySpecResolver resolver, EntityDraft... bodies) {
+        GameplayBox2dWorld nativeWorld = Box2dTestSupport.world(Vec2.ZERO);
+        AgentRuntime runtime = Box2dTestSupport.runtime();
+        GameplayBox2dBridge bridge = new GameplayBox2dBridge(
+                nativeWorld, new Box2dBodyFactory(Box2dTestSupport.UNITS, resolver),
+                Box2dTestSupport.UNITS, runtime, GameplayLimits.defaults());
+        GameWorld.Builder builder = GameWorld.builder(
+                        GameplayLimits.defaults(), StandardComponents.registry())
+                .fixedStepNanos(Box2dTestSupport.STEP_NANOS)
+                .initializer(sink -> {
+                    for (EntityDraft body : bodies) sink.spawn(body);
+                })
+                .lifecycleParticipant(bridge);
+        bridge.systems().forEach(builder::system);
+        runtime.start();
+        return new ActivationFixture(nativeWorld, runtime, bridge, builder.build());
+    }
+
+    private static void setStepping(GameplayBox2dWorld world, boolean value)
+            throws ReflectiveOperationException {
+        Field stepping = GameplayBox2dWorld.class.getDeclaredField("stepping");
+        stepping.setAccessible(true);
+        stepping.setBoolean(world, value);
+    }
+
+    private static void assertCode(GameplayDiagnosticCode code, Runnable operation) {
+        GameplayException failure = assertThrows(GameplayException.class, operation::run);
+        assertEquals(code, failure.code());
+    }
+
+    private record ActivationFixture(
+            GameplayBox2dWorld nativeWorld,
+            AgentRuntime runtime,
+            GameplayBox2dBridge bridge,
+            GameWorld gameWorld) implements AutoCloseable {
+        @Override public void close() {
+            gameWorld.close();
+            runtime.close();
+            nativeWorld.close();
+        }
     }
 
     private static void assertInitialJointPose(double firstAngle, double secondAngle) {

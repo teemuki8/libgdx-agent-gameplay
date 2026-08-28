@@ -53,12 +53,37 @@ bridge.applyForce(torsoId, forceNewtons, worldPointRenderUnits);
 var hits = bridge.raycast(new Box2dRaycastSpec(origin, translation, category, mask, 16));
 ```
 
-Forces and torque are finite SI values; points, joint anchors, and raycasts use render units.
-Every operation is owner-thread confined and bounded. The bridge resolves private native identity
-internally and returns copied immutable body, joint, contact, and ray evidence.
+Replacing a dynamic attachment is one owner-thread, unlocked-world transition. Copy the target
+palm's state, disable the attached body, remove the old joint, activate the body from copied
+palm-derived dynamics, and then create the replacement joint:
 
-No gameplay 1.0 Maven Central release has been authorized. Local publication qualification uses
-the property-driven `1.0.0-SNAPSHOT`; release workflows must supply the exact authorized version.
+```java
+Box2dBodyState palm = bridge.bodyState(palmId).orElseThrow();
+bridge.deactivate(weaponId);
+bridge.removeJoint(attachmentId);
+bridge.activate(new Box2dBodyActivation(
+        weaponId,
+        palm.positionRenderUnits(),
+        palm.angleRadians(),
+        palm.velocityRenderUnitsPerSecond(),
+        palm.angularVelocityRadiansPerSecond()));
+bridge.createRevoluteJoint(new Box2dRevoluteJointSpec(
+        attachmentId, palmId, weaponId, palm.positionRenderUnits(),
+        lowerAngleRadians, upperAngleRadians, false));
+```
+
+`deactivate` retains the mapped native body and does not remove joints. `activate` accepts only a
+disabled mapped dynamic body; it installs the copied pose and velocity before waking the body.
+Forces and torque are finite SI values; positions, points, joint anchors, linear velocities, and
+raycasts use render units. Angular values use radians.
+
+Every bridge operation is owner-thread confined and bounded. Native mutations are rejected while
+the world is locked. The bridge alone resolves native IDs, structs, pointers, closures, and
+buffers. Application code passes stable gameplay IDs and immutable copied values and receives
+copied body, joint, contact, and ray evidence; native identity never crosses the public API.
+
+The `1.1.0` activation API is additive over the `1.0.0` baseline. Building a release candidate uses
+`-PreleaseVersion=1.1.0`; tagging, staging, and publishing remain separately authorized operations.
 
 ## Guides
 
