@@ -73,6 +73,7 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
     private final b2Vec2 localAnchorB = new b2Vec2();
     private final b2Rot jointRotationA = new b2Rot();
     private final b2Rot jointRotationB = new b2Rot();
+    private final b2Rot activationRotation = new b2Rot();
     private final b2RevoluteJointDef revoluteDef = new b2RevoluteJointDef();
     private final b2QueryFilter rayFilter = new b2QueryFilter();
     private final b2TreeStats rayStats = new b2TreeStats();
@@ -121,6 +122,29 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
         requireOwnerOpen("read-box2d-body-state");
         Box2dBodyHandle handle = bodies.get(Objects.requireNonNull(entityId, "entityId"));
         return handle == null ? Optional.empty() : Optional.of(handle.state(units));
+    }
+
+    /** Applies copied pose and velocity while enabling one disabled mapped dynamic body. */
+    public void activate(Box2dBodyActivation activation) {
+        requireMutable("activate-disabled-body");
+        Box2dBodyActivation checked = Objects.requireNonNull(activation, "activation");
+        Box2dBodyHandle handle = requireHandle(checked.entityId());
+        if (handle.bodyType() != Box2dBodyType.DYNAMIC
+                || Box2d.b2Body_IsEnabled(handle.body())) {
+            throw failure(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    "disabled dynamic body for activation", checked.entityId().value());
+        }
+        copyVector(checked.positionRenderUnits(), pointScratch, true);
+        copyVector(checked.velocityRenderUnitsPerSecond(), vectorScratch, true);
+        Box2d.b2MakeRot(finiteFloat(checked.angleRadians(), "activation.angle"),
+                activationRotation);
+        float angularVelocity = finiteFloat(
+                checked.angularVelocityRadiansPerSecond(), "activation.angularVelocity");
+        Box2d.b2Body_SetTransform(handle.body(), pointScratch, activationRotation);
+        Box2d.b2Body_Enable(handle.body());
+        Box2d.b2Body_SetLinearVelocity(handle.body(), vectorScratch);
+        Box2d.b2Body_SetAngularVelocity(handle.body(), angularVelocity);
+        Box2d.b2Body_SetAwake(handle.body(), true);
     }
 
     /** Creates one bridge-owned revolute joint from copied endpoints and world anchor. */
