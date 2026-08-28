@@ -77,10 +77,10 @@ disabled mapped dynamic body; it installs the copied pose and velocity before wa
 Forces and torque are finite SI values; positions, points, joint anchors, linear velocities, and
 raycasts use render units. Angular values use radians.
 
-Every bridge operation is owner-thread confined, bounded, and rejected while the native world is
-locked. The bridge alone resolves native IDs, structs, pointers, closures, and buffers. Application
-code passes stable gameplay IDs and immutable copied values and receives copied body, joint,
-contact, and ray evidence; native identity never crosses the public API.
+Every bridge operation is owner-thread confined and bounded. Native mutations are rejected while
+the world is locked. The bridge alone resolves native IDs, structs, pointers, closures, and
+buffers. Application code passes stable gameplay IDs and immutable copied values and receives
+copied body, joint, contact, and ray evidence; native identity never crosses the public API.
 
 The `1.1.0` activation API is additive over the `1.0.0` baseline. Building a release candidate uses
 `-PreleaseVersion=1.1.0`; tagging, staging, and publishing remain separately authorized operations.
