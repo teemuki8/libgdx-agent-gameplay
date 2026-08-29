@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.badlogic.gdx.box2d.Box2d;
 import com.badlogic.gdx.box2d.enums.b2ShapeType;
+import com.badlogic.gdx.box2d.structs.b2Filter;
 import io.github.teemuki8.libgdx.agent.gameplay.core.GameplayLimits;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Collider;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Movement;
@@ -116,6 +117,113 @@ final class GameplayBox2dBridgeTest {
         runtime.close();
         nativeWorld.close();
         assertTrue(nativeWorld.isClosed());
+    }
+
+    @Test
+    void collisionFilterValidatesExactNativeBitRanges() {
+        Box2dCollisionFilter lowerBounds =
+                new Box2dCollisionFilter(0, 0, Short.MIN_VALUE);
+        assertEquals(0, lowerBounds.categoryBits());
+        assertEquals(0, lowerBounds.maskBits());
+        assertEquals(Short.MIN_VALUE, lowerBounds.groupIndex());
+        Box2dCollisionFilter upperBounds =
+                new Box2dCollisionFilter(0xffff, 0xffff, Short.MAX_VALUE);
+        assertEquals(0xffff, upperBounds.categoryBits());
+        assertEquals(0xffff, upperBounds.maskBits());
+        assertEquals(Short.MAX_VALUE, upperBounds.groupIndex());
+
+        assertCode(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                () -> new Box2dCollisionFilter(-1, 0, 0));
+        assertCode(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                () -> new Box2dCollisionFilter(0x1_0000, 0, 0));
+        assertCode(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                () -> new Box2dCollisionFilter(0, -1, 0));
+        assertCode(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                () -> new Box2dCollisionFilter(0, 0x1_0000, 0));
+        assertCode(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                () -> new Box2dCollisionFilter(0, 0, Short.MIN_VALUE - 1));
+        assertCode(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                () -> new Box2dCollisionFilter(0, 0, Short.MAX_VALUE + 1));
+    }
+
+    @Test
+    void collisionFilterCopiesThroughPrivateMappingIntoNativeShape() {
+        EntityId id = EntityId.of("body");
+        try (ActivationFixture fixture = activationFixture(
+                ignored -> bodySpec(Box2dBodyType.DYNAMIC),
+                Box2dTestSupport.body("body", 0, 0))) {
+            fixture.gameWorld().step();
+
+            fixture.bridge().configureCollisionFilter(
+                    id, new Box2dCollisionFilter(0x8001, 0xfffe, -37));
+
+            assertNativeFilter(fixture.bridge(), id, 0x8001, 0xfffe, -37);
+        }
+    }
+
+    @Test
+    void collisionFilterRequiresActiveMappingUnlockedOwnerAndOpenBridge() throws Exception {
+        EntityId id = EntityId.of("body");
+        Box2dCollisionFilter filter = new Box2dCollisionFilter(2, 4, 0);
+        try (ActivationFixture fixture = activationFixture(
+                ignored -> bodySpec(Box2dBodyType.DYNAMIC),
+                Box2dTestSupport.body("body", 0, 0))) {
+            fixture.gameWorld().step();
+
+            assertCode(GameplayDiagnosticCode.BOX2D_BODY_NOT_FOUND,
+                    () -> fixture.bridge().configureCollisionFilter(
+                            EntityId.of("missing"), filter));
+            fixture.bridge().deactivate(id);
+            assertCode(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    () -> fixture.bridge().configureCollisionFilter(id, filter));
+            fixture.bridge().activate(activation(id));
+
+            AtomicReference<Throwable> wrongThreadFailure = new AtomicReference<>();
+            Thread thread = new Thread(() -> {
+                try {
+                    fixture.bridge().configureCollisionFilter(id, filter);
+                } catch (Throwable failure) {
+                    wrongThreadFailure.set(failure);
+                }
+            }, "collision-filter-wrong-owner");
+            thread.start();
+            thread.join();
+            GameplayException ownerFailure =
+                    (GameplayException) wrongThreadFailure.get();
+            assertEquals(GameplayDiagnosticCode.OWNER_THREAD_VIOLATION, ownerFailure.code());
+
+            setStepping(fixture.nativeWorld(), true);
+            try {
+                assertThrows(IllegalStateException.class,
+                        () -> fixture.bridge().configureCollisionFilter(id, filter));
+            } finally {
+                setStepping(fixture.nativeWorld(), false);
+            }
+
+            fixture.gameWorld().close();
+            assertCode(GameplayDiagnosticCode.BOX2D_BRIDGE_CLOSED,
+                    () -> fixture.bridge().configureCollisionFilter(id, filter));
+        }
+    }
+
+    @Test
+    void collisionFilterResetRebuildsTheInitialFilterWithoutRetainingNativeIdentity() {
+        EntityId id = EntityId.of("body");
+        try (ActivationFixture fixture = activationFixture(
+                ignored -> bodySpec(Box2dBodyType.DYNAMIC),
+                Box2dTestSupport.body("body", 0, 0))) {
+            fixture.gameWorld().step();
+            fixture.bridge().configureCollisionFilter(
+                    id, new Box2dCollisionFilter(8, 16, -2));
+            assertNativeFilter(fixture.bridge(), id, 8, 16, -2);
+
+            fixture.gameWorld().requestReset();
+            fixture.gameWorld().step();
+            assertTrue(fixture.bridge().bodyState(id).isEmpty());
+            fixture.gameWorld().step();
+
+            assertNativeFilter(fixture.bridge(), id, 1, 0xffff, 0);
+        }
     }
 
     @Test
@@ -314,6 +422,15 @@ final class GameplayBox2dBridgeTest {
         Field stepping = GameplayBox2dWorld.class.getDeclaredField("stepping");
         stepping.setAccessible(true);
         stepping.setBoolean(world, value);
+    }
+
+    private static void assertNativeFilter(GameplayBox2dBridge bridge, EntityId entityId,
+            long categoryBits, long maskBits, int groupIndex) {
+        b2Filter nativeFilter = new b2Filter();
+        Box2d.b2Shape_GetFilter(bridge.handle(entityId).orElseThrow().shape(), nativeFilter);
+        assertEquals(categoryBits, nativeFilter.categoryBits());
+        assertEquals(maskBits, nativeFilter.maskBits());
+        assertEquals(groupIndex, nativeFilter.groupIndex());
     }
 
     private static void assertCode(GameplayDiagnosticCode code, Runnable operation) {

@@ -2,6 +2,7 @@ package io.github.teemuki8.libgdx.agent.gameplay.box2d;
 
 import com.badlogic.gdx.box2d.Box2d;
 import com.badlogic.gdx.box2d.structs.b2JointId;
+import com.badlogic.gdx.box2d.structs.b2Filter;
 import com.badlogic.gdx.box2d.structs.b2Rot;
 import com.badlogic.gdx.box2d.structs.b2QueryFilter;
 import com.badlogic.gdx.box2d.structs.b2RevoluteJointDef;
@@ -65,6 +66,7 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
     private final Map<Box2dJointId, OwnedRevoluteJoint> joints = new TreeMap<>();
     private final List<GameSystem> systems;
     private final b2Vec2 vectorScratch = new b2Vec2();
+    private final b2Filter collisionFilterScratch = new b2Filter();
     private final b2Vec2 pointScratch = new b2Vec2();
     private final b2Vec2 anchorScratch = new b2Vec2();
     private final b2Vec2 rayOriginScratch = new b2Vec2();
@@ -229,6 +231,30 @@ public final class GameplayBox2dBridge implements LifecycleParticipant, AutoClos
         Box2dBodyHandle handle = requireActiveDynamic(entityId, "apply-force-to-center");
         copyVector(Objects.requireNonNull(forceNewtons, "forceNewtons"), vectorScratch, false);
         Box2d.b2Body_ApplyForceToCenter(handle.body(), vectorScratch, true);
+    }
+
+    /**
+     * Replaces the collision filter on one active bridge-mapped shape.
+     *
+     * <p>The bridge resolves its private native shape identity internally and copies every filter
+     * value into Box2D. Call this only on the bridge owner thread while the application-owned world
+     * is unlocked.
+     *
+     * @param entityId stable gameplay entity whose single mapped shape will be updated
+     * @param filter copied unsigned category/mask bits and signed collision group
+     */
+    public void configureCollisionFilter(EntityId entityId, Box2dCollisionFilter filter) {
+        requireMutable("configure-collision-filter");
+        Box2dBodyHandle handle = requireHandle(entityId);
+        if (!Box2d.b2Body_IsEnabled(handle.body())) {
+            throw failure(GameplayDiagnosticCode.BOX2D_INVALID_CONFIGURATION,
+                    "active mapped body for configure-collision-filter", entityId.value());
+        }
+        Box2dCollisionFilter checked = Objects.requireNonNull(filter, "filter");
+        collisionFilterScratch.categoryBits(checked.categoryBits());
+        collisionFilterScratch.maskBits(checked.maskBits());
+        collisionFilterScratch.groupIndex(checked.groupIndex());
+        Box2d.b2Shape_SetFilter(handle.shape(), collisionFilterScratch);
     }
 
     /** Applies SI torque and wakes an active dynamic body. */
