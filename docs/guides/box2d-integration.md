@@ -42,6 +42,27 @@ bridge.applyTorque(torsoId, torqueNewtonMetres);
 bridge.applyForce(torsoId, new Vec2(forceXNewtons, forceYNewtons), worldPointRenderUnits);
 ```
 
+## Runtime collision filtering
+
+Change the single mapped shape's Box2D filter through stable gameplay identity:
+
+```java
+bridge.configureCollisionFilter(
+        weaponId,
+        new Box2dCollisionFilter(WEAPON_CATEGORY, DAMAGEABLE_MASK, 0));
+```
+
+`categoryBits` and `maskBits` are unsigned 16-bit values represented as Java `int`; `groupIndex`
+is a signed 16-bit value. A zero group applies the category/mask rules, a positive group forces
+collision between shapes with the same group, and a negative group prevents it. The operation
+accepts static, kinematic, or dynamic mapped bodies, but the body must be active.
+
+Call `configureCollisionFilter` only on the bridge owner thread while the bridge is open and the
+application-owned world is unlocked. The bridge resolves its private shape ID and immediately
+copies the filter into Box2D. Missing or inactive mapped bodies, locked-world mutation, and
+out-of-range filter values are rejected before native mutation. No native shape identity crosses
+the public API.
+
 ## Replacing a dynamic attachment
 
 Perform the complete attachment transition on the bridge owner thread while the world is unlocked.

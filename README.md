@@ -51,6 +51,9 @@ bridge.applyForceToCenter(torsoId, new Vec2(forceXNewtons, forceYNewtons));
 bridge.applyTorque(torsoId, torqueNewtonMetres);
 bridge.applyForce(torsoId, forceNewtons, worldPointRenderUnits);
 var hits = bridge.raycast(new Box2dRaycastSpec(origin, translation, category, mask, 16));
+bridge.configureCollisionFilter(
+        weaponId,
+        new Box2dCollisionFilter(WEAPON_CATEGORY, DAMAGEABLE_MASK, 0));
 ```
 
 Replacing a dynamic attachment is one owner-thread, unlocked-world transition. Copy the target
@@ -82,8 +85,9 @@ the world is locked. The bridge alone resolves native IDs, structs, pointers, cl
 buffers. Application code passes stable gameplay IDs and immutable copied values and receives
 copied body, joint, contact, and ray evidence; native identity never crosses the public API.
 
-The `1.1.0` activation API is additive over the `1.0.0` baseline. Building a release candidate uses
-`-PreleaseVersion=1.1.0`; tagging, staging, and publishing remain separately authorized operations.
+The `1.2.0` collision-filter API is additive over the `1.1.0` baseline. Building a release
+candidate uses `-PapiBaselineVersion=1.1.0 -PreleaseVersion=1.2.0`; tagging, staging, and
+publishing remain separately authorized operations.
 
 ## Guides
 
