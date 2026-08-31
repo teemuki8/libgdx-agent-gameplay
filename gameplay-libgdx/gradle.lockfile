@@ -5,8 +5,8 @@
 com.badlogicgames.gdx:gdx-jnigen-loader:2.5.2=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 com.badlogicgames.gdx:gdx-platform:1.14.2=testRuntimeClasspath
 com.badlogicgames.gdx:gdx:1.14.2=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
-com.fasterxml.jackson.core:jackson-core:2.22.1=runtimeClasspath,testRuntimeClasspath
-com.fasterxml.jackson:jackson-bom:2.22.1=runtimeClasspath,testRuntimeClasspath
+com.fasterxml.jackson.core:jackson-core:2.22.2=runtimeClasspath,testRuntimeClasspath
+com.fasterxml.jackson:jackson-bom:2.22.2=runtimeClasspath,testRuntimeClasspath
 com.google.code.findbugs:jsr305:3.0.2=checkstyle
 com.google.errorprone:error_prone_annotations:2.36.0=checkstyle
 com.google.guava:failureaccess:1.0.3=checkstyle
