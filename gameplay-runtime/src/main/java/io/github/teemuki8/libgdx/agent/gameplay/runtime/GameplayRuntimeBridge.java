@@ -59,6 +59,7 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
     private final AgentRuntime runtime;
     private final RuntimeProjectionRegistry projections;
     private final GameplayLimits limits;
+    private final io.github.teemuki8.libgdx.agent.gameplay.core.event.EventCodecRegistry eventCodecs;
     private final EntityRegistration sourceRegistration;
     private final List<GameSystem> systems;
     private final Thread ownerThread;
@@ -67,13 +68,23 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
     private long openTick = -1;
     private boolean closed;
     private String lastFrameToken;
+    private int declaredEntityMaximum = -1;
 
     /** Installs one bounded dynamic source before the caller starts the runtime. */
     public GameplayRuntimeBridge(
             AgentRuntime runtime,
             RuntimeProjectionRegistry projections,
             GameplayLimits limits) {
+        this(runtime, projections, limits,
+                io.github.teemuki8.libgdx.agent.gameplay.core.event.EventCodecRegistry.empty());
+    }
+
+    /** Installs explicitly shared application event codecs without changing standard projections. */
+    public GameplayRuntimeBridge(AgentRuntime runtime, RuntimeProjectionRegistry projections,
+            GameplayLimits limits,
+            io.github.teemuki8.libgdx.agent.gameplay.core.event.EventCodecRegistry eventCodecs) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
+        this.eventCodecs = Objects.requireNonNull(eventCodecs, "eventCodecs");
         this.projections = Objects.requireNonNull(projections, "projections");
         this.limits = Objects.requireNonNull(limits, "limits");
         ownerThread = Thread.currentThread();
@@ -89,6 +100,25 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
                     "Close the existing gameplay bridge before installing another.");
         }
         systems = List.of(new RuntimeOpenFrameSystem(this), new RuntimeCaptureSystem(this));
+    }
+
+    /**
+     * Preflights and enforces an application-selected entity envelope against this runtime's actual
+     * configuration. Each gameplay entity exposes a domain and visual entity plus one frame entity.
+     * Call before the first tick; reserve space explicitly for all other runtime sources. This does
+     * not predict component property, event, string or frame-staging limits. With preflight enabled,
+     * any actual capture truncation also fails instead of publishing a successful frame token.
+     */
+    public void validateCapacity(int maximumGameplayEntities, int reservedOtherRuntimeEntities) {
+        requireOpen();
+        long required = 1L + 2L * maximumGameplayEntities + reservedOtherRuntimeEntities;
+        if (openTick >= 0 || capturedFrame != null || maximumGameplayEntities < 0
+                || maximumGameplayEntities > limits.maxEntities() || reservedOtherRuntimeEntities < 0
+                || required > runtime.configuration().limits().entitiesPerSnapshot()) {
+            throw incomplete("pre-tick entity envelope within actual runtime capacity",
+                    Long.toString(required), "Lower the declared gameplay cap or explicitly configure sufficient runtime capacity.");
+        }
+        declaredEntityMaximum = maximumGameplayEntities;
     }
 
     /** Returns the fixed INPUT-open and RUNTIME_CAPTURE-complete systems. */
@@ -122,6 +152,7 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
                 Math.multiplyExact(checked.world().entities().size(), 2));
         int runtimeEntityLimit = runtime.configuration().limits().entitiesPerSnapshot();
         if (exposedEntities > runtimeEntityLimit
+                || (declaredEntityMaximum >= 0 && checked.world().entities().size() > declaredEntityMaximum)
                 || checked.world().entities().size() > limits.maxEntities()
                 || checked.events().size() > limits.maxEventsPerTick()
                 || checked.visuals().entries().size() > limits.maxVisualEntries()) {
@@ -132,17 +163,25 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
         }
         capturedFrame = checked;
         Throwable failure = null;
+        boolean frameCompleted = false;
         try {
             emitEvents(checked.events());
             runtime.endFrame();
+            frameCompleted = true;
+            if (declaredEntityMaximum >= 0 && incompleteCapture(runtime.latestFrame().orElseThrow())) {
+                throw incomplete("complete runtime capture", "runtime truncation or capture diagnostic",
+                        "Inspect runtime frame statistics and configure every exceeded limit explicitly.");
+            }
             lastFrameToken = checked.frameToken();
         } catch (Throwable captureFailure) {
             failure = captureFailure;
-            try {
-                runtime.endFrame();
-            } catch (Throwable cleanupFailure) {
-                if (cleanupFailure != captureFailure) {
-                    captureFailure.addSuppressed(cleanupFailure);
+            if (!frameCompleted) {
+                try {
+                    runtime.endFrame();
+                } catch (Throwable cleanupFailure) {
+                    if (cleanupFailure != captureFailure) {
+                        captureFailure.addSuppressed(cleanupFailure);
+                    }
                 }
             }
         } finally {
@@ -158,6 +197,14 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
     public Optional<String> lastFrameToken() {
         requireOpen();
         return Optional.ofNullable(lastFrameToken);
+    }
+
+    private static boolean incompleteCapture(io.github.teemuki8.libgdx.agent.runtime.core.FrameSnapshot frame) {
+        return !frame.stats().truncations().isEmpty() || !frame.stats().diagnostics().isEmpty()
+                || frame.entities().stream().anyMatch(entity -> !entity.truncations().isEmpty())
+                || frame.events().stream().anyMatch(event -> !event.truncations().isEmpty())
+                || frame.decisions().stream().anyMatch(decision -> !decision.truncations().isEmpty()
+                        || decision.completion() != io.github.teemuki8.libgdx.agent.runtime.core.DecisionTrace.Completion.COMPLETED);
     }
 
     void openFrame(long tick, long deltaNanos) {
@@ -275,7 +322,7 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
                 .forEach(damage -> damageCounts.merge(damage.subject(), 1, Integer::sum));
         Set<CauseKey> caused = new HashSet<>();
         for (EventEnvelope envelope : events) {
-            EventSpec spec = eventSpec(envelope.event());
+            EventSpec spec = eventSpec(envelope);
             envelope.attributes().values().forEach(
                     (name, value) -> spec.attribute(name, runtimeValue(value)));
             Optional<EventId> emitted = runtime.emit(spec);
@@ -301,7 +348,8 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
         }
     }
 
-    private static EventSpec eventSpec(GameplayEvent event) {
+    private EventSpec eventSpec(EventEnvelope envelope) {
+        GameplayEvent event = envelope.event();
         if (event instanceof EntitySpawned spawned) {
             return EventSpec.type("gameplay.entity-spawned")
                     .subject(runtimeEntityId("gameplay.entity." + spawned.subject().value()));
@@ -349,12 +397,21 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
             return collisionSpec("gameplay.collision-ended", collision.first(),
                     collision.second(), collision.firstFixtureId(), collision.secondFixtureId());
         }
+        var custom = eventCodecs.project(event, envelope.attributes());
+        if (custom.isPresent()) {
+            var projection = custom.orElseThrow();
+            EventSpec spec = EventSpec.type("gameplay." + projection.type());
+            projection.payload().subject().ifPresent(id -> spec.subject(runtimeEntityId("gameplay.entity." + id.value())));
+            projection.payload().source().ifPresent(id -> spec.source(runtimeEntityId("gameplay.entity." + id.value())));
+            projection.payload().attributes().values().forEach((name, value) -> spec.attribute(name, runtimeValue(value)));
+            return spec;
+        }
         throw GameplayException.validation(
                 GameplayDiagnosticCode.UNKNOWN_RUNTIME_PROJECTION,
                 "project-gameplay-event",
                 "standard gameplay event",
                 event.getClass().getName(),
-                "Register only the closed V1 event vocabulary.");
+                "Register a copying codec for application events, or use a standard event.");
     }
 
     private static EventSpec collisionSpec(

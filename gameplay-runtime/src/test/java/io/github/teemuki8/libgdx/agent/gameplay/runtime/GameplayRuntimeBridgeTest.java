@@ -36,6 +36,114 @@ import org.junit.jupiter.api.Test;
 
 final class GameplayRuntimeBridgeTest {
     @Test
+    void preflightEnvelopeIsEnforcedByActualWorldCapture() {
+        try (AgentRuntime runtime = AgentRuntime.builder().build();
+                GameplayRuntimeBridge bridge = new GameplayRuntimeBridge(runtime,
+                        StandardRuntimeProjections.registry(), GameplayLimits.defaults())) {
+            bridge.validateCapacity(0, 0);
+            runtime.start();
+            try (GameWorld world = world(bridge)) {
+                assertThrows(GameplayException.class, world::step);
+                assertEquals(java.util.Optional.empty(), bridge.lastFrameToken());
+            }
+        }
+    }
+
+    @Test
+    void preflightDoesNotHideFailedPropertyProjectionBehindASuccessfulToken() {
+        var small = new io.github.teemuki8.libgdx.agent.runtime.core.RuntimeLimits(
+                10, 100, 100, 1, 10, 10, 64, 4096, 256, 16, 100);
+        try (AgentRuntime runtime = AgentRuntime.builder().configuration(
+                        new io.github.teemuki8.libgdx.agent.runtime.core.RuntimeConfiguration(true, small)).build();
+                GameplayRuntimeBridge bridge = new GameplayRuntimeBridge(runtime,
+                        StandardRuntimeProjections.registry(), GameplayLimits.defaults())) {
+            bridge.validateCapacity(1, 0);
+            runtime.start();
+            try (GameWorld world = world(bridge)) { assertThrows(GameplayException.class, world::step); }
+            assertEquals(java.util.Optional.empty(), bridge.lastFrameToken());
+            assertFalse(runtime.latestFrame().orElseThrow().stats().diagnostics().isEmpty());
+        }
+    }
+
+    @Test
+    void preflightRejectsNestedEventAttributeTruncation() {
+        var small = new io.github.teemuki8.libgdx.agent.runtime.core.RuntimeLimits(
+                10, 100, 100, 128, 10, 10, 1, 4096, 256, 16, 100);
+        try (AgentRuntime runtime = AgentRuntime.builder().configuration(
+                        new io.github.teemuki8.libgdx.agent.runtime.core.RuntimeConfiguration(true, small)).build();
+                GameplayRuntimeBridge bridge = new GameplayRuntimeBridge(runtime,
+                        StandardRuntimeProjections.registry(), GameplayLimits.defaults())) {
+            bridge.validateCapacity(0, 0);
+            GameWorld.Builder builder = GameWorld.builder(GameplayLimits.defaults(), StandardComponents.registry());
+            bridge.systems().forEach(builder::system);
+            builder.system(visualPreparation(bridge));
+            builder.system(new GameSystem() {
+                @Override public SystemDescriptor descriptor() {
+                    return new SystemDescriptor(SystemId.of("event"), SystemPhase.GAMEPLAY, 10);
+                }
+                @Override public void update(SystemContext context) {
+                    runtime.emit(io.github.teemuki8.libgdx.agent.runtime.core.EventSpec.type("custom")
+                            .attribute("a", RuntimeValues.integer(1)).attribute("b", RuntimeValues.integer(2)));
+                }
+            });
+            runtime.start();
+            try (GameWorld world = builder.build()) { assertThrows(GameplayException.class, world::step); }
+            assertEquals(java.util.Optional.empty(), bridge.lastFrameToken());
+            assertFalse(runtime.latestFrame().orElseThrow().events().getFirst().truncations().isEmpty());
+        }
+    }
+
+    @Test
+    void capacityPreflightUsesActualRuntimeConfigurationAndReservesOtherSources() {
+        var defaults = io.github.teemuki8.libgdx.agent.runtime.core.RuntimeLimits.developmentDefaults();
+        var small = new io.github.teemuki8.libgdx.agent.runtime.core.RuntimeLimits(
+                defaults.retainedFrames(), defaults.retainedEvents(), 5,
+                defaults.propertiesPerEntity(), defaults.decisionsPerFrame(), defaults.candidatesPerDecision(),
+                defaults.attributesPerItem(), defaults.stringLength(), defaults.collectionLength(),
+                defaults.nestingDepth(), defaults.queryResults());
+        try (AgentRuntime runtime = AgentRuntime.builder().configuration(
+                        new io.github.teemuki8.libgdx.agent.runtime.core.RuntimeConfiguration(true, small)).build();
+                GameplayRuntimeBridge bridge = new GameplayRuntimeBridge(runtime,
+                        StandardRuntimeProjections.registry(), GameplayLimits.defaults())) {
+            bridge.validateCapacity(2, 0);
+            assertThrows(GameplayException.class, () -> bridge.validateCapacity(2, 1));
+            assertThrows(GameplayException.class, () -> bridge.validateCapacity(3, 0));
+            bridge.validateCapacity(1, 2);
+        }
+    }
+
+    private record Harvested(long amount) implements io.github.teemuki8.libgdx.agent.gameplay.core.event.GameplayEvent {}
+
+    @Test
+    void applicationEventProjectsThroughRealWorldCapture() {
+        try (AgentRuntime runtime = AgentRuntime.builder().build();
+                GameplayRuntimeBridge bridge = new GameplayRuntimeBridge(
+                        runtime, StandardRuntimeProjections.registry(), GameplayLimits.defaults(),
+                        io.github.teemuki8.libgdx.agent.gameplay.core.event.EventCodecRegistry.builder()
+                                .register("harvested", Harvested.class, event -> new
+                                        io.github.teemuki8.libgdx.agent.gameplay.core.event.EventCodecRegistry.Payload(
+                                        java.util.Optional.empty(), java.util.Optional.empty(),
+                                        io.github.teemuki8.libgdx.agent.gameplay.core.event.EventAttributes.of(java.util.Map.of(
+                                                "amount", io.github.teemuki8.libgdx.agent.gameplay.core.event.EventAttributeValue.integer(event.amount())))))
+                                .build())) {
+            GameWorld.Builder builder = GameWorld.builder(GameplayLimits.defaults(), StandardComponents.registry());
+            bridge.systems().forEach(builder::system);
+            builder.system(visualPreparation(bridge));
+            builder.system(new GameSystem() {
+                @Override public SystemDescriptor descriptor() {
+                    return new SystemDescriptor(SystemId.of("harvest"), SystemPhase.GAMEPLAY, 10);
+                }
+                @Override public void update(SystemContext context) { context.emit(new Harvested(4)); }
+            });
+            runtime.start();
+            try (GameWorld world = builder.build()) { world.step(); }
+            var event = runtime.latestFrame().orElseThrow().events().getFirst();
+            assertEquals("gameplay.harvested", event.type().value());
+            assertEquals(RuntimeValues.integer(4), event.attributes().getFirst().value());
+        }
+    }
+
+    @Test
     void rejectsBridgeAccessFromAThreadOtherThanItsOwner() {
         AgentRuntime runtime = AgentRuntime.builder().build();
         try (GameplayRuntimeBridge bridge = new GameplayRuntimeBridge(

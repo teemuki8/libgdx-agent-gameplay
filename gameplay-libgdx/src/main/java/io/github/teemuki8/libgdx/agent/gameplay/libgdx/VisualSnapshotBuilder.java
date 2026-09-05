@@ -13,6 +13,7 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayExceptio
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.Bounds2;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec2;
 import io.github.teemuki8.libgdx.agent.gameplay.core.visual.ScreenBounds;
+import io.github.teemuki8.libgdx.agent.gameplay.core.visual.RenderView;
 import io.github.teemuki8.libgdx.agent.gameplay.core.visual.VisualEvidenceStatus;
 import io.github.teemuki8.libgdx.agent.gameplay.core.visual.WorldVisualEntry;
 import io.github.teemuki8.libgdx.agent.gameplay.core.visual.WorldVisualSnapshot;
@@ -27,11 +28,20 @@ import java.util.Optional;
 public final class VisualSnapshotBuilder {
     private final OrthographicCamera camera;
     private final AssetResolver assets;
-    private final int framebufferWidth;
     private final int framebufferHeight;
+    private final RenderView view;
     private final int maxEntries;
     private final double unitConversion;
     private final Thread ownerThread;
+
+    private static RenderView legacyView(int width, int height) {
+        if (width < 1 || height < 1) {
+            throw GameplayException.validation(GameplayDiagnosticCode.LIMIT_OUT_OF_RANGE,
+                    "configure-visual-snapshot", "positive framebuffer", width + "x" + height,
+                    "Use the current positive framebuffer size and a bounded entry cap.");
+        }
+        return RenderView.fullFramebuffer(width, height);
+    }
 
     /** Creates a builder using the fixed V1 visual entry maximum. */
     public VisualSnapshotBuilder(
@@ -72,8 +82,18 @@ public final class VisualSnapshotBuilder {
             int framebufferHeight,
             int maxEntries,
             double unitConversion) {
+        this(camera, assets, legacyView(framebufferWidth, framebufferHeight),
+                maxEntries, unitConversion);
+    }
+
+    /** Creates evidence using the same copied physical viewport as rendering and input mapping. */
+    public VisualSnapshotBuilder(OrthographicCamera camera, AssetResolver assets, RenderView view,
+            int maxEntries, double unitConversion) {
         this.camera = Objects.requireNonNull(camera, "camera");
         this.assets = Objects.requireNonNull(assets, "assets");
+        this.view = Objects.requireNonNull(view, "view");
+        int framebufferWidth = view.framebufferWidth();
+        int framebufferHeight = view.framebufferHeight();
         if (framebufferWidth < 1 || framebufferHeight < 1
                 || maxEntries < 1 || maxEntries > GameplayLimits.VISUAL_ENTRY_MAXIMUM
                 || !Double.isFinite(unitConversion) || unitConversion <= 0.0) {
@@ -85,7 +105,6 @@ public final class VisualSnapshotBuilder {
                     framebufferWidth + "x" + framebufferHeight + ":" + maxEntries,
                     "Use the current positive framebuffer size and a bounded entry cap.");
         }
-        this.framebufferWidth = framebufferWidth;
         this.framebufferHeight = framebufferHeight;
         this.maxEntries = maxEntries;
         this.unitConversion = unitConversion;
@@ -94,8 +113,14 @@ public final class VisualSnapshotBuilder {
 
     /** Captures every drawable entity, retaining typed unavailable evidence. */
     public WorldVisualSnapshot build(WorldSnapshot snapshot) {
+        return build(PresentationFrame.current(snapshot));
+    }
+
+    /** Captures the exact presentation poses drawn by the renderer, retaining authoritative colliders. */
+    public WorldVisualSnapshot build(PresentationFrame frame) {
         requireOwner();
-        Objects.requireNonNull(snapshot, "snapshot");
+        Objects.requireNonNull(frame, "frame");
+        WorldSnapshot snapshot = frame.current();
         List<EntitySnapshot> entities = GameplayRenderer.orderedEntities(snapshot);
         if (entities.size() > maxEntries) {
             throw GameplayException.validation(
@@ -107,19 +132,18 @@ public final class VisualSnapshotBuilder {
         }
         ArrayList<WorldVisualEntry> entries = new ArrayList<>(entities.size());
         for (EntitySnapshot entity : entities) {
-            entries.add(entry(snapshot.tick(), entity));
+            entries.add(entry(snapshot.tick(), entity, frame.transform(entity)));
         }
         return new WorldVisualSnapshot(snapshot.tick(), entries);
     }
 
-    private WorldVisualEntry entry(long tick, EntitySnapshot entity) {
-        Transform2D transform = entity.component(Transform2D.TYPE).orElseThrow();
+    private WorldVisualEntry entry(long tick, EntitySnapshot entity, Transform2D transform) {
         Sprite sprite = entity.component(Sprite.TYPE).orElseThrow();
         Render render = entity.component(Render.TYPE).orElseThrow();
         Animation animation = entity.component(Animation.TYPE).orElse(null);
         Bounds2 worldBounds = worldBounds(transform, sprite);
         Optional<Bounds2> colliderBounds = entity.component(Collider.TYPE)
-                .map(collider -> colliderBounds(transform, collider));
+                .map(collider -> colliderBounds(entity.component(Transform2D.TYPE).orElseThrow(), collider));
         Optional<Vec2> alignmentDelta = colliderBounds.map(bounds -> new Vec2(
                 centerX(worldBounds) - centerX(bounds),
                 centerY(worldBounds) - centerY(bounds)));
@@ -145,7 +169,7 @@ public final class VisualSnapshotBuilder {
         try {
             ScreenBounds projected = project(worldBounds);
             screenBounds = Optional.of(projected);
-            cameraVisible = projected.intersects(framebufferWidth, framebufferHeight);
+            cameraVisible = view.intersects(projected);
         } catch (GameplayException failure) {
             if (failure.code() != GameplayDiagnosticCode.UNPROJECTABLE_BOUNDS) {
                 throw failure;
@@ -164,16 +188,16 @@ public final class VisualSnapshotBuilder {
     private ScreenBounds project(Bounds2 bounds) {
         Vector3 first = camera.project(
                 new Vector3((float) bounds.minX(), (float) bounds.minY(), 0),
-                0, 0, framebufferWidth, framebufferHeight);
+                view.viewportX(), view.viewportY(), view.viewportWidth(), view.viewportHeight());
         Vector3 second = camera.project(
                 new Vector3((float) bounds.maxX(), (float) bounds.minY(), 0),
-                0, 0, framebufferWidth, framebufferHeight);
+                view.viewportX(), view.viewportY(), view.viewportWidth(), view.viewportHeight());
         Vector3 third = camera.project(
                 new Vector3((float) bounds.minX(), (float) bounds.maxY(), 0),
-                0, 0, framebufferWidth, framebufferHeight);
+                view.viewportX(), view.viewportY(), view.viewportWidth(), view.viewportHeight());
         Vector3 fourth = camera.project(
                 new Vector3((float) bounds.maxX(), (float) bounds.maxY(), 0),
-                0, 0, framebufferWidth, framebufferHeight);
+                view.viewportX(), view.viewportY(), view.viewportWidth(), view.viewportHeight());
         double minX = Math.min(Math.min(first.x, second.x), Math.min(third.x, fourth.x));
         double maxX = Math.max(Math.max(first.x, second.x), Math.max(third.x, fourth.x));
         double minBottomY = Math.min(

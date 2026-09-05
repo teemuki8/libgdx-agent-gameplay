@@ -27,6 +27,7 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.event.EntityKilled;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EntitySpawned;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EventAttributeValue;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EventEnvelope;
+import io.github.teemuki8.libgdx.agent.gameplay.core.event.EventCodecRegistry;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.GameplayEvent;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.ItemCollected;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.ObjectiveCompleted;
@@ -55,6 +56,7 @@ import java.util.TreeMap;
 public final class CanonicalWorldEncoder {
     private final int maxBytes;
     private final ComponentRegistry components;
+    private final EventCodecRegistry eventCodecs;
 
     /** Creates an encoder with an application-lowered cap. */
     public CanonicalWorldEncoder(int maxBytes) {
@@ -63,6 +65,11 @@ public final class CanonicalWorldEncoder {
 
     /** Creates an encoder with an explicit component-codec registry. */
     public CanonicalWorldEncoder(int maxBytes, ComponentRegistry components) {
+        this(maxBytes, components, EventCodecRegistry.empty());
+    }
+
+    /** Creates an encoder with explicit component and custom-event copying codecs. */
+    public CanonicalWorldEncoder(int maxBytes, ComponentRegistry components, EventCodecRegistry eventCodecs) {
         if (maxBytes < 1 || maxBytes > GameplayLimits.SNAPSHOT_BYTE_MAXIMUM) {
             throw GameplayException.validation(
                     GameplayDiagnosticCode.LIMIT_OUT_OF_RANGE,
@@ -73,6 +80,7 @@ public final class CanonicalWorldEncoder {
         }
         this.maxBytes = maxBytes;
         this.components = Objects.requireNonNull(components, "components");
+        this.eventCodecs = Objects.requireNonNull(eventCodecs, "eventCodecs");
     }
 
     /** Returns an encoder using the fixed 4 MiB V1 cap. */
@@ -127,7 +135,7 @@ public final class CanonicalWorldEncoder {
             }
             priorSequence = envelope.sequence();
             writer.longValue(envelope.sequence());
-            encodeEvent(writer, envelope.event());
+            encodeEvent(writer, envelope.event(), envelope.attributes());
             writer.integer(envelope.attributes().values().size());
             envelope.attributes().values().forEach((name, value) -> {
                 writer.text(name);
@@ -220,7 +228,8 @@ public final class CanonicalWorldEncoder {
         writer.integer(animation.frameIndex());
     }
 
-    private static void encodeEvent(Writer writer, GameplayEvent event) {
+    private void encodeEvent(Writer writer, GameplayEvent event,
+            io.github.teemuki8.libgdx.agent.gameplay.core.event.EventAttributes envelopeAttributes) {
         if (event instanceof EntitySpawned spawned) {
             writer.text("entity-spawned");
             writer.text(spawned.subject().value());
@@ -262,7 +271,20 @@ public final class CanonicalWorldEncoder {
             collision(writer, collision.first().value(), collision.second().value(),
                     collision.firstFixtureId(), collision.secondFixtureId());
         } else {
-            throw unsupported("standard canonical event", event.getClass().getName());
+            EventCodecRegistry.Projection projection = eventCodecs.project(event, envelopeAttributes)
+                    .orElseThrow(() -> unsupported("standard or registered canonical event", event.getClass().getName()));
+            writer.text("custom-event");
+            writer.text(projection.type());
+            EventCodecRegistry.Payload payload = projection.payload();
+            writer.bool(payload.subject().isPresent());
+            payload.subject().ifPresent(subject -> writer.text(subject.value()));
+            writer.bool(payload.source().isPresent());
+            payload.source().ifPresent(source -> writer.text(source.value()));
+            writer.integer(payload.attributes().values().size());
+            payload.attributes().values().forEach((name, value) -> {
+                writer.text(name);
+                encodeAttribute(writer, value);
+            });
         }
     }
 

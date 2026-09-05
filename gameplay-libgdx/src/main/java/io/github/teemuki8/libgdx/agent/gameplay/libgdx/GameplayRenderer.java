@@ -1,9 +1,12 @@
 package io.github.teemuki8.libgdx.agent.gameplay.libgdx;
 
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.Matrix4;
+import com.badlogic.gdx.utils.BufferUtils;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Animation;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Render;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Sprite;
@@ -12,6 +15,8 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnost
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.world.EntitySnapshot;
 import io.github.teemuki8.libgdx.agent.gameplay.core.world.WorldSnapshot;
+import io.github.teemuki8.libgdx.agent.gameplay.core.visual.RenderView;
+import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -30,6 +35,7 @@ public final class GameplayRenderer implements AutoCloseable {
     private final OrthographicCamera camera;
     private final AssetResolver assets;
     private final Thread ownerThread;
+    private final IntBuffer viewportScratch = BufferUtils.newIntBuffer(4);
     private boolean closed;
 
     /** Wraps but never disposes the application-owned graphics objects. */
@@ -43,7 +49,38 @@ public final class GameplayRenderer implements AutoCloseable {
 
     /** Resolves every region first, then draws in layer/order/entity order. */
     public void render(WorldSnapshot snapshot) {
+        render(PresentationFrame.current(snapshot));
+    }
+
+    /** Draws inside the declared physical viewport and restores the caller's GL viewport afterward. */
+    public void render(PresentationFrame frame, RenderView view) {
         requireOwner("render-gameplay");
+        Objects.requireNonNull(frame, "frame");
+        Objects.requireNonNull(view, "view");
+        if (closed) {
+            throw GameplayException.validation(GameplayDiagnosticCode.RENDERER_CLOSED,
+                    "render-gameplay", "open renderer", "closed renderer",
+                    "Create a new renderer for later frames.");
+        }
+        viewportScratch.clear();
+        Gdx.gl.glGetIntegerv(GL20.GL_VIEWPORT, viewportScratch);
+        int x = viewportScratch.get(0);
+        int y = viewportScratch.get(1);
+        int width = viewportScratch.get(2);
+        int height = viewportScratch.get(3);
+        Gdx.gl.glViewport(view.viewportX(), view.viewportY(), view.viewportWidth(), view.viewportHeight());
+        try {
+            render(frame);
+        } finally {
+            Gdx.gl.glViewport(x, y, width, height);
+        }
+    }
+
+    /** Draws explicit presentation poses without changing either source snapshot. */
+    public void render(PresentationFrame frame) {
+        requireOwner("render-gameplay");
+        Objects.requireNonNull(frame, "frame");
+        WorldSnapshot snapshot = frame.current();
         if (closed) {
             throw GameplayException.validation(
                     GameplayDiagnosticCode.RENDERER_CLOSED,
@@ -59,7 +96,7 @@ public final class GameplayRenderer implements AutoCloseable {
                 continue;
             }
             Sprite sprite = entity.component(Sprite.TYPE).orElseThrow();
-            Transform2D transform = entity.component(Transform2D.TYPE).orElseThrow();
+            Transform2D transform = frame.transform(entity);
             Animation animation = entity.component(Animation.TYPE).orElse(null);
             entries.add(new DrawEntry(transform, sprite, render,
                     assets.resolve(sprite, animation, snapshot.tick())));

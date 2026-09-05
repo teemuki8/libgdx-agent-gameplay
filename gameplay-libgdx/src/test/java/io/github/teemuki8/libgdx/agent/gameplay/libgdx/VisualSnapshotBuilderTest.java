@@ -64,6 +64,24 @@ final class VisualSnapshotBuilderTest {
     }
 
     @Test
+    void letterboxedEvidenceUsesActualViewportAndExcludesTheBlackBars() {
+        OrthographicCamera camera = new OrthographicCamera(10, 10);
+        camera.position.set(5, 5, 0);
+        camera.update();
+        VisualSnapshotBuilder builder = new VisualSnapshotBuilder(camera,
+                new AssetResolver(new AssetResolverTest.StubAtlas(Map.of())),
+                new io.github.teemuki8.libgdx.agent.gameplay.core.visual.RenderView(
+                        200, 100, 50, 20, 100, 60), 100, 1.0);
+        var visual = builder.build(new WorldSnapshot(3, List.of(
+                entity("player", "missing", new Vec2(5, 5)),
+                entity("outside", "missing", new Vec2(-2, 5)))));
+        var bounds = visual.require(EntityId.of("player")).screenBounds().orElseThrow();
+        assertEquals(95.0, bounds.minX(), 0.001);
+        assertEquals(47.0, bounds.minY(), 0.001);
+        assertEquals(false, visual.require(EntityId.of("outside")).cameraVisible());
+    }
+
+    @Test
     void rejectsCameraCaptureFromAThreadOtherThanItsOwner() {
         OrthographicCamera camera = new OrthographicCamera(10, 10);
         VisualSnapshotBuilder builder = new VisualSnapshotBuilder(
