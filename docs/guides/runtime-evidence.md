@@ -25,6 +25,18 @@ simulation tick ran, capture a presentation-only runtime frame without advancing
 frame still has a unique proof. Missing or drifted evidence must remain `UNCORRELATED`, `STALE`, or
 `UNAVAILABLE`; never substitute a widget read as domain authority.
 
+## Presentation-only visual refresh (unreleased additive API)
+
+After a viewport/camera change while paused, project the last completed world snapshot again
+and call `bridge.refreshPresentationVisuals(visuals)` on the owner thread between ticks.
+Then capture the application's ordinary presentation-only runtime frame, render/finish the UI
+frame, and record its correlation. Refresh does not open or complete a runtime frame, advance
+gameplay, re-emit events, replace domain state, or choose a UI correlation token. The gameplay
+frame token remains the last completed tick's token; the presentation runtime frame is new.
+The supplied visual snapshot must match that tick and contain at most one entry per known entity
+within the bridge's visual-entry limit. Before the first successful capture, during a tick, after
+a failed capture, on a different thread, or after close, refresh fails rather than guessing.
+
 ## Application event codecs and capacity (unreleased additive APIs)
 
 Build one immutable `EventCodecRegistry` with explicit stable IDs, exact application event classes,
