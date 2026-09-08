@@ -68,6 +68,7 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
     private long openTick = -1;
     private boolean closed;
     private String lastFrameToken;
+    private boolean captureComplete;
     private int declaredEntityMaximum = -1;
 
     /** Installs one bounded dynamic source before the caller starts the runtime. */
@@ -173,6 +174,7 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
                         "Inspect runtime frame statistics and configure every exceeded limit explicitly.");
             }
             lastFrameToken = checked.frameToken();
+            captureComplete = true;
         } catch (Throwable captureFailure) {
             failure = captureFailure;
             if (!frameCompleted) {
@@ -193,6 +195,44 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
         }
     }
 
+    /**
+     * Refreshes camera/viewport presentation evidence for the last completed world tick.
+     *
+     * <p>Call on the owner thread between ticks, before the application's presentation-only
+     * runtime frame. This method neither advances gameplay nor opens/completes a runtime
+     * frame, repeats events, or records a UI correlation. Domain state and its gameplay
+     * frame token stay unchanged; the next runtime capture observes the refreshed visuals.
+     *
+     * @param visuals bounded visual evidence for the last successfully captured world tick
+     */
+    public void refreshPresentationVisuals(WorldVisualSnapshot visuals) {
+        requireOpen();
+        WorldVisualSnapshot checked = Objects.requireNonNull(visuals, "visuals");
+        GameplayRuntimeFrame previous = capturedFrame;
+        if (openTick >= 0 || previous == null || !captureComplete
+                || checked.tick() != previous.world().tick()) {
+            throw incomplete("visuals for the last successfully completed tick between ticks",
+                    Long.toString(checked.tick()),
+                    "Complete a gameplay capture before refreshing presentation evidence.");
+        }
+        if (checked.entries().size() > limits.maxVisualEntries()) {
+            throw incomplete("visual entries <= " + limits.maxVisualEntries(),
+                    Integer.toString(checked.entries().size()),
+                    "Keep presentation evidence within the application's visual limit.");
+        }
+        var known = new HashSet<io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId>();
+        previous.world().entities().forEach(entity -> known.add(entity.id()));
+        var seen = new HashSet<io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId>();
+        for (var entry : checked.entries()) {
+            if (!known.contains(entry.entityId()) || !seen.add(entry.entityId())) {
+                throw incomplete("one visual entry per captured gameplay entity", entry.entityId().value(),
+                        "Project only entities in the last completed world snapshot, without duplicates.");
+            }
+        }
+        capturedFrame = new GameplayRuntimeFrame(previous.world(), previous.commands(),
+                previous.events(), checked, previous.frameToken());
+    }
+
     /** Returns the last successfully completed gameplay frame token. */
     public Optional<String> lastFrameToken() {
         requireOpen();
@@ -209,6 +249,7 @@ public final class GameplayRuntimeBridge implements AutoCloseable {
 
     void openFrame(long tick, long deltaNanos) {
         requireOpen();
+        captureComplete = false;
         if (openTick >= 0) {
             long incompleteTick = openTick;
             runtime.endFrame();
