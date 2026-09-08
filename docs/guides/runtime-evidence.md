@@ -36,6 +36,9 @@ frame token remains the last completed tick's token; the presentation runtime fr
 The supplied visual snapshot must match that tick and contain at most one entry per known entity
 within the bridge's visual-entry limit. Before the first successful capture, during a tick, after
 a failed capture, on a different thread, or after close, refresh fails rather than guessing.
+Successful capture follows the bridge's existing capacity policy: call `validateCapacity`
+before the first tick to also reject runtime capture diagnostics and truncation. Refresh does
+not upgrade legacy captures without that preflight into complete-evidence guarantees.
 
 ## Application event codecs and capacity (unreleased additive APIs)
 
