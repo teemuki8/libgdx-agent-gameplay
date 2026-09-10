@@ -17,10 +17,19 @@ public final class BulletCharacterMotor {
     public CharacterState step(CharacterState state, CharacterIntent intent, double seconds) {
         world.requireOpen();
         if (!Double.isFinite(seconds) || seconds <= 0 || seconds > 0.1) throw new IllegalArgumentException("tick: (0,0.1]");
-        boolean crouched = intent.crouch();
+        double targetFraction = intent.crouch() ? 1 : 0;
+        double distance = Math.abs(targetFraction - state.crouchFraction());
+        double delta = config.crouchTransitionSeconds() == 0 ? 1 : seconds / config.crouchTransitionSeconds();
+        // Snap arithmetic residue at the duration boundary to an exact endpoint.
+        double fraction = delta >= distance - 1e-12 ? targetFraction
+                : state.crouchFraction() + Math.copySign(delta, targetFraction - state.crouchFraction());
         Vector3 feet = GameplayBulletWorld.vector(state.feet());
-        if (state.crouched() && !crouched && overlaps(feet, config.standingHeight())) crouched = true;
-        double height = crouched ? config.crouchedHeight() : config.standingHeight();
+        double height = config.heightAt(fraction);
+        if (fraction < state.crouchFraction() && overlaps(feet, height)) {
+            // Growth is optional; never depenetrate a newly enlarged capsule through a roof.
+            fraction = state.crouchFraction();
+            height = config.heightAt(fraction);
+        }
         for (int i = 0; i < 6; i++) {
             var correction = GameplayBulletWorld.vector(world.capsulePenetration(
                     GameplayBulletWorld.copy(centre(feet, height)), config.radius(), height));
@@ -29,7 +38,7 @@ public final class BulletCharacterMotor {
         }
         if (overlaps(feet, height)) throw new IllegalStateException("capsule start overlap exceeds six recovery iterations");
         Vector3 velocity = GameplayBulletWorld.vector(state.velocity());
-        Vector3 desired = GameplayBulletWorld.vector(intent.movement()).scl((float) (config.speed() * (crouched ? config.crouchSpeedScale() : 1)));
+        Vector3 desired = GameplayBulletWorld.vector(intent.movement()).scl((float) (config.speed() * config.speedScaleAt(fraction)));
         Vector3 horizontal = new Vector3(velocity.x, 0, velocity.z);
         Vector3 change = desired.sub(horizontal);
         double rate = intent.movement().equals(io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec3.ZERO)
@@ -65,14 +74,14 @@ public final class BulletCharacterMotor {
         BulletHit floor = velocity.y <= 0 ? ground(afterVertical, height, grounded ? config.stepHeight() + 0.03 : 0.03) : null;
         grounded = floor != null;
         if (grounded) {
-            double distance = state.grounded() ? config.stepHeight() + 0.03 : 0.03;
+            double snapDistance = state.grounded() ? config.stepHeight() + 0.03 : 0.03;
             // Repeat with the same distance used above so the fraction has an explicit unit conversion.
-            double probe = (state.grounded() && !intent.jump()) ? distance : 0.03;
+            double probe = (state.grounded() && !intent.jump()) ? snapDistance : 0.03;
             BulletHit snap = ground(afterVertical, height, probe);
             if (snap != null) afterVertical.y -= (float) Math.max(0, probe * snap.fraction() - SKIN);
             velocity.y = 0;
         }
-        return new CharacterState(GameplayBulletWorld.copy(afterVertical), GameplayBulletWorld.copy(velocity), grounded, crouched);
+        return new CharacterState(GameplayBulletWorld.copy(afterVertical), GameplayBulletWorld.copy(velocity), grounded, fraction);
     }
 
     private Vector3 slide(Vector3 feet, Vector3 delta, double height) {

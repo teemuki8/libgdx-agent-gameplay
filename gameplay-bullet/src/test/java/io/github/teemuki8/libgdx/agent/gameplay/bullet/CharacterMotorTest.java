@@ -9,6 +9,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class CharacterMotorTest {
+    @Test void defaultCrouchBeginsWithAnIntermediateSpeedInsteadOfAnInstantTargetChange() {
+        try (var world = room()) {
+            var motor = new BulletCharacterMotor(world, CharacterConfig.defaults());
+            var state = new CharacterState(new Vec3(0, 0.01, 0), new Vec3(5, 0, 0), true, false);
+            state = motor.step(state, new CharacterIntent(new Vec3(1, 0, 0), false, true), 1.0 / 60);
+            assertTrue(state.velocity().x() > 4.7 && state.velocity().x() < 5,
+                    "first fixed tick should retain the interpolated standing-to-crouch speed: " + state);
+        }
+    }
+
     @Test void configurableCrouchRatioControlsSpeedWithoutHiddenMultiplier() {
         double[] travelled = new double[2];
         double[] ratios = {1, 0.25};

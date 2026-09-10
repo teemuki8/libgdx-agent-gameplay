@@ -22,11 +22,11 @@ public final class GameplayBulletBridge {
                 var pose = entity.component(Transform3D.TYPE).orElseThrow();
                 var velocity = entity.component(Velocity3D.TYPE).orElseThrow();
                 var stance = entity.component(CharacterStance.TYPE).orElseThrow();
-                var next = motor.step(new CharacterState(pose.position(), velocity.linear(), stance.grounded(), stance.crouched()),
+                var next = motor.step(new CharacterState(pose.position(), velocity.linear(), stance.grounded(), stance.crouchFraction()),
                         intents.resolve(context, entity), context.fixedStepNanos() / 1_000_000_000.0);
                 context.replace(entity.id(), Transform3D.TYPE, new Transform3D(next.feet(), pose.rotation(), pose.scale()));
                 context.replace(entity.id(), Velocity3D.TYPE, new Velocity3D(next.velocity()));
-                context.replace(entity.id(), CharacterStance.TYPE, new CharacterStance(next.grounded(), next.crouched()));
+                context.replace(entity.id(), CharacterStance.TYPE, new CharacterStance(next.grounded(), next.crouchFraction()));
             }
         }
     };
