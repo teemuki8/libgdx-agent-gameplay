@@ -29,7 +29,7 @@ public final class BulletCharacterMotor {
         }
         if (overlaps(feet, height)) throw new IllegalStateException("capsule start overlap exceeds six recovery iterations");
         Vector3 velocity = GameplayBulletWorld.vector(state.velocity());
-        Vector3 desired = GameplayBulletWorld.vector(intent.movement()).scl((float) (config.speed() * (crouched ? 0.5 : 1)));
+        Vector3 desired = GameplayBulletWorld.vector(intent.movement()).scl((float) (config.speed() * (crouched ? config.crouchSpeedScale() : 1)));
         Vector3 horizontal = new Vector3(velocity.x, 0, velocity.z);
         Vector3 change = desired.sub(horizontal);
         double rate = intent.movement().equals(io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec3.ZERO)

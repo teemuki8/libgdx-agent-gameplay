@@ -3,16 +3,23 @@ package io.github.teemuki8.libgdx.agent.gameplay.bullet;
 /** Bounded kinematic capsule tuning, in metres and seconds. */
 public record CharacterConfig(double radius, double standingHeight, double crouchedHeight,
         double speed, double acceleration, double braking, double gravity, double jumpSpeed,
-        double stepHeight, double maxSlopeRadians) {
+        double stepHeight, double maxSlopeRadians, double crouchSpeedScale) {
     public CharacterConfig {
         for (double value : new double[]{radius, standingHeight, crouchedHeight, speed,
-                acceleration, braking, gravity, jumpSpeed, stepHeight, maxSlopeRadians}) {
+                acceleration, braking, gravity, jumpSpeed, stepHeight, maxSlopeRadians, crouchSpeedScale}) {
             if (!Double.isFinite(value) || value < 0 || value > 100) throw new IllegalArgumentException("character tuning");
         }
         if (radius < 0.01 || crouchedHeight < 2 * radius || standingHeight < crouchedHeight
-                || maxSlopeRadians >= Math.PI / 2 || acceleration == 0 || braking == 0) {
+                || crouchSpeedScale > 1 || maxSlopeRadians >= Math.PI / 2 || acceleration == 0 || braking == 0) {
             throw new IllegalArgumentException("invalid character dimensions or slope");
         }
+    }
+    /** Compatibility constructor retains the original half-speed crouch. */
+    public CharacterConfig(double radius, double standingHeight, double crouchedHeight,
+            double speed, double acceleration, double braking, double gravity, double jumpSpeed,
+            double stepHeight, double maxSlopeRadians) {
+        this(radius, standingHeight, crouchedHeight, speed, acceleration, braking, gravity, jumpSpeed,
+                stepHeight, maxSlopeRadians, 0.5);
     }
     /** Human-scale default capsule and responsive authored movement. */
     public static CharacterConfig defaults() {

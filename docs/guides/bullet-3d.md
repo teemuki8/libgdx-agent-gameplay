@@ -41,7 +41,9 @@ character geometry to match the configured capsule. Pose rotation does not tilt 
 `BulletCharacterMotor.step` is also independently reusable from a PHYSICS system: pass immutable
 state, command-derived intent and the authoritative fixed duration; write the returned state into
 your existing components. It has no second state store. Acceleration/braking, gravity, jump,
-crouch clearance, step height and slope limit are configurable. Sliding and initial penetration
+crouch clearance, crouch top-speed ratio [0,1], step height and slope limit are configurable.
+The eleven-argument CharacterConfig constructor sets the ratio last; the ten-argument
+compatibility constructor retains the original 0.5 ratio. The motor applies this ratio once. Sliding and initial penetration
 recovery each have six iterations. Unresolved starting overlap fails explicitly; do not hide it
 with a teleport. Body count is 1..4096; dimensions/tick duration/coordinates are bounded before
 native calls. This is a kinematic static-obstacle adapter, not dynamic rigid-body simulation,
@@ -82,3 +84,6 @@ real framebuffer test on LWJGL 3.4.3. Both modules passed Checkstyle main/test a
 Java compilation, Checkstyle, Javadoc or test failures remained. The independent core-package
 review's allocation-order, scaled-bounds, renderer-overflow and copied-hit validation findings
 were corrected before this gate.
+
+Followup native gate: 10 Bullet tests passed, including full-speed versus quarter-speed crouch
+displacement, with Checkstyle and Javadocs passing after making the crouch ratio configurable.

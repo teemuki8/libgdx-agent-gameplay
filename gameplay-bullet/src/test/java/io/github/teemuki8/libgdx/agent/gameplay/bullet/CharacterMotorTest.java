@@ -9,6 +9,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class CharacterMotorTest {
+    @Test void configurableCrouchRatioControlsSpeedWithoutHiddenMultiplier() {
+        double[] travelled = new double[2];
+        double[] ratios = {1, 0.25};
+        for (int index = 0; index < ratios.length; index++) {
+            try (var world = room()) {
+                var config = new CharacterConfig(0.3, 1.8, 1.0, 5, 25, 30, 20, 7, 0.3,
+                        Math.toRadians(45), ratios[index]);
+                var motor = new BulletCharacterMotor(world, config);
+                var state = new CharacterState(new Vec3(0, 0.01, 0), Vec3.ZERO, true, false);
+                for (int tick = 0; tick < 60; tick++) state = motor.step(state,
+                        new CharacterIntent(new Vec3(1, 0, 0), false, true), 1.0 / 60);
+                travelled[index] = state.feet().x();
+            }
+        }
+        assertTrue(travelled[0] > 4.4, "ratio one preserves standing top speed");
+        assertTrue(travelled[1] > 1.1 && travelled[1] < 1.3, "quarter speed is applied once");
+    }
     @Test void landsJumpsAndCannotWalkThroughWall() {
         try (var world = room()) {
             var motor = new BulletCharacterMotor(world, CharacterConfig.defaults());
