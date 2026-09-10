@@ -10,6 +10,8 @@ slf4j = "2.0.18"
 japicmp = "0.26.1"
 
 [libraries]
+gdx-bullet = { module = "com.badlogicgames.gdx:gdx-bullet", version.ref = "gdx" }
+gdx-bullet-platform = { module = "com.badlogicgames.gdx:gdx-bullet-platform", version.ref = "gdx" }
 gdx-core = { module = "com.badlogicgames.gdx:gdx", version.ref = "gdx" }
 gdx-lwjgl3 = { module = "com.badlogicgames.gdx:gdx-backend-lwjgl3", version.ref = "gdx" }
 gdx-box2d = { module = "com.badlogicgames.gdx:gdx-box2d", version.ref = "gdx" }
