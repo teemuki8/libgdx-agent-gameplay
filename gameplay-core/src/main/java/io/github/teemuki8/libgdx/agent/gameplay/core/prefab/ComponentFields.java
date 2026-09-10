@@ -4,6 +4,8 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnost
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.Rgba;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec2;
+import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec3;
+import io.github.teemuki8.libgdx.agent.gameplay.core.value.QuaternionValue;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -110,6 +112,30 @@ public final class ComponentFields {
     /** Returns an optional two-number vector. */
     public Vec2 optionalVec2(String name, Vec2 defaultValue) {
         return values.containsKey(name) ? requireVec2(name) : defaultValue;
+    }
+
+    /** Returns a required finite three-number vector. */
+    public Vec3 requireVec3(String name) {
+        List<PrefabValue> entries = requireArray(name, 3);
+        return new Vec3(number(name, entries.get(0)), number(name, entries.get(1)),
+                number(name, entries.get(2)));
+    }
+
+    /** Returns an optional finite three-number vector. */
+    public Vec3 optionalVec3(String name, Vec3 defaultValue) {
+        return values.containsKey(name) ? requireVec3(name) : defaultValue;
+    }
+
+    /** Returns a required unit quaternion in x/y/z/w order. */
+    public QuaternionValue requireQuaternion(String name) {
+        List<PrefabValue> entries = requireArray(name, 4);
+        return new QuaternionValue(number(name, entries.get(0)), number(name, entries.get(1)),
+                number(name, entries.get(2)), number(name, entries.get(3)));
+    }
+
+    /** Returns an optional unit quaternion. */
+    public QuaternionValue optionalQuaternion(String name, QuaternionValue defaultValue) {
+        return values.containsKey(name) ? requireQuaternion(name) : defaultValue;
     }
 
     /** Returns a required four-number normalized color. */

@@ -23,6 +23,15 @@
       "maxItems": 2,
       "prefixItems": [{"$ref": "#/$defs/number"}, {"$ref": "#/$defs/number"}]
     },
+    "vec3": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "items": {"type": "number"}
+    },
+    "quaternion": {
+      "description": "Unit quaternion x/y/z/w; runtime validates squared length within 1e-6 of one.",
+      "type": "array", "minItems": 4, "maxItems": 4,
+      "items": {"type": "number", "minimum": -1.000001, "maximum": 1.000001}
+    },
     "rgba": {
       "type": "array",
       "minItems": 4,
@@ -49,6 +58,9 @@
     },
     "component": {
       "oneOf": [
+        {"$ref": "#/$defs/transform3d"},
+        {"$ref": "#/$defs/velocity3d"},
+        {"$ref": "#/$defs/aim3d"},
         {"$ref": "#/$defs/transform"},
         {"$ref": "#/$defs/movement"},
         {"$ref": "#/$defs/health"},
@@ -59,6 +71,28 @@
         {"$ref": "#/$defs/animation"},
         {"$ref": "#/$defs/render"}
       ]
+    },
+    "transform3d": {
+      "type": "object", "additionalProperties": false, "required": ["type"],
+      "properties": {
+        "type": {"const": "transform3d"}, "position": {"$ref": "#/$defs/vec3"},
+        "rotation": {"$ref": "#/$defs/quaternion"},
+        "scale": {"type": "array", "minItems": 3, "maxItems": 3,
+          "items": {"type": "number", "exclusiveMinimum": 0}}
+      }
+    },
+    "velocity3d": {
+      "type": "object", "additionalProperties": false, "required": ["type", "linear"],
+      "properties": {"type": {"const": "velocity3d"}, "linear": {"$ref": "#/$defs/vec3"}}
+    },
+    "aim3d": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "yawRadians", "pitchRadians"],
+      "properties": {
+        "type": {"const": "aim3d"},
+        "yawRadians": {"type": "number", "minimum": -3.141592653589793, "maximum": 3.141592653589793},
+        "pitchRadians": {"type": "number", "minimum": -1.5707963267948966, "maximum": 1.5707963267948966}
+      }
     },
     "transform": {
       "type": "object", "additionalProperties": false,

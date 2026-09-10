@@ -1,0 +1,14 @@
+package io.github.teemuki8.libgdx.agent.gameplay.core.command;
+
+import io.github.teemuki8.libgdx.agent.gameplay.core.value.EntityId;
+import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec3;
+import java.util.Objects;
+
+/** Immutable typed three-dimensional move intent. */
+public record Move3DCommand(EntityId entityId, Vec3 direction) implements GameplayCommand {
+    /** Requires explicit immutable command values. */
+    public Move3DCommand {
+        Objects.requireNonNull(entityId, "entityId");
+        Objects.requireNonNull(direction, "direction");
+    }
+}
