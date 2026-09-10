@@ -1,4 +1,4 @@
-# Optional Bullet 3D adapter (local candidate)
+# Optional Bullet 3D adapter (1.5.0)
 
 `gameplay-bullet` is an additive optional module. Existing Box2D/2D modules and published
 coordinates remain unchanged. The application creates and closes `GameplayBulletWorld(maxBodies)`;
@@ -13,6 +13,13 @@ Units are metres, Y is up. Raw capsule queries take the centre and total height 
 hemispheres. `CharacterState.feet` and the bridged `Transform3D.position` are at the feet.
 The motor's radius/height are configuration-owned, independent of presentation scale: author
 character geometry to match the configured capsule. Pose rotation does not tilt the capsule.
+
+## Dependencies
+
+Align optional `io.github.teemuki8:gameplay-bullet:1.5.0` with the other gameplay modules.
+Desktop applications explicitly supply `com.badlogicgames.gdx:gdx-platform:1.14.2:natives-desktop`
+and `com.badlogicgames.gdx:gdx-bullet-platform:1.14.2:natives-desktop` as runtime-only dependencies.
+The Bullet module POM contains no desktop backend or native classifier dependency.
 
 ## Ownership and integration
 
@@ -29,7 +36,7 @@ character geometry to match the configured capsule. Pose rotation does not tilt 
   in the existing `GameWorld`. It uses PHYSICS slot 10, so choose distinct slots for other systems.
 - Register `CharacterStance.TYPE` with `CharacterStance.CODEC`, and add it alongside `Transform3D`
   and `Velocity3D` to capsule entities. These immutable components remain the sole character state.
-  Stance's canonical field order is grounded then crouched. Applications using strict prefabs
+  Stance's canonical field order is grounded, derived crouched, then crouchFraction. Applications using strict prefabs
   register an explicit local decoder for this optional component.
 - Resolve `CharacterIntent` from commands processed by the application's production input system.
   Horizontal movement has length at most one. Jump is a press edge; crouch is held. Store previous
@@ -42,7 +49,10 @@ character geometry to match the configured capsule. Pose rotation does not tilt 
 state, command-derived intent and the authoritative fixed duration; write the returned state into
 your existing components. It has no second state store. Acceleration/braking, gravity, jump,
 crouch clearance, crouch top-speed ratio [0,1], step height and slope limit are configurable.
-The eleven-argument CharacterConfig constructor sets the ratio last; the ten-argument
+The twelve-argument constructor adds crouch transition seconds in [0,5], with zero selecting
+instant transitions. Defaults use 0.18 seconds. The authoritative fraction drives capsule height,
+movement speed and application eye height; growth pauses under obstructing ceilings.
+The eleven-argument CharacterConfig constructor sets the ratio last and retains instant transitions; the ten-argument
 compatibility constructor retains the original 0.5 ratio. The motor applies this ratio once. Sliding and initial penetration
 recovery each have six iterations. Unresolved starting overlap fails explicitly; do not hide it
 with a teleport. Body count is 1..4096; dimensions/tick duration/coordinates are bounded before
@@ -76,7 +86,7 @@ checks do not qualify a game's production input, HUD/runtime correlation or visu
 
 Bullet 1.14.2 artifacts and LWJGL 3.4.3 test artifacts were resolved from Maven Central. Candidate
 checksums from the repository refresh script were individually compared with direct Central
-SHA-256 downloads before acceptance. No publication/release is performed for this local candidate.
+SHA-256 downloads before acceptance. Publication receipts are recorded in the versioned release notes.
 
 Final scoped gate (2026-09-10): 9 Bullet tests and 11 gameplay-libgdx tests passed, including the
 real framebuffer test on LWJGL 3.4.3. Both modules passed Checkstyle main/test and Javadocs under

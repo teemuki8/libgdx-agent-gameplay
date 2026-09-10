@@ -37,14 +37,15 @@ jobs:
       - name: Check adapters under Xvfb
         run: >-
           xvfb-run -a ./gradlew
-          :gameplay-libgdx:check :gameplay-runtime:check :gameplay-box2d:check
+          :gameplay-libgdx:check :gameplay-runtime:check :gameplay-box2d:check :gameplay-bullet:check
           --warning-mode=fail
       - name: Check real fixture and MCP
         run: xvfb-run -a ./gradlew :gameplay-fixture:check --warning-mode=fail
       - name: Check full publication contract
         run: >-
           xvfb-run -a ./gradlew clean check javadoc apiCompatibility
-          verifyPublicationArchives verifyPublishedPoms --warning-mode=fail
+          verifyPublicationArchives verifyPublishedPoms -PreleaseVersion=1.5.0
+          -PapiBaselineVersion=1.4.0 --no-configuration-cache --warning-mode=fail
       - name: Verify isolated Maven consumer
         run: ./scripts/verify-maven-local.sh
       - name: Retain bounded failed reports

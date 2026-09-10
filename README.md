@@ -41,6 +41,8 @@ apply.
   application-owned opaque world, genuine box/circle/capsule shapes, copied dynamics and
   collision-impact evidence, bounded private-identity revolute joints, forces, torque, and raycast.
   Native IDs, structs, pointers, closures, and buffers never cross the bridge API.
+- `io.github.teemuki8:gameplay-bullet` — optional bounded Bullet collision queries and authoritative
+  capsule movement, including smooth collision-safe crouch. Applications own world lifetime and natives.
 - `gameplay-fixture` is the markup/harness qualification application and is not published.
 
 The Box2D 3 adapter reports maximum positive whole-step `totalNormalImpulse` as immutable

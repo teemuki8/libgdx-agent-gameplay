@@ -88,25 +88,27 @@ jobs:
             local deployment_id="$1"
             local work_directory
             work_directory="$(mktemp -d)"
-            local base_path="io/github/teemuki8/gameplay-core/$version"
-            curl --fail-with-body --silent --show-error \
-              --header "Authorization: Bearer $authorization" \
-              --output "$work_directory/core.jar" \
-              "$central_api/deployment/$deployment_id/download/$base_path/gameplay-core-$version.jar"
-            curl --fail-with-body --silent --show-error \
-              --header "Authorization: Bearer $authorization" \
-              --output "$work_directory/core.pom" \
-              "$central_api/deployment/$deployment_id/download/$base_path/gameplay-core-$version.pom"
             local result=0
-            unzip -Z1 "$work_directory/core.jar" \
-              | grep --quiet --fixed-strings --line-regexp META-INF/LICENSE || result=1
-            unzip -Z1 "$work_directory/core.jar" \
-              | grep --quiet --fixed-strings --line-regexp META-INF/NOTICE || result=1
-            grep --quiet '<name>Teemu Jääskeläinen</name>' "$work_directory/core.pom" || result=1
-            grep --quiet '<email>teemuki8@users.noreply.github.com</email>' \
-              "$work_directory/core.pom" || result=1
-            grep --quiet '<url>https://github.com/teemuki8</url>' \
-              "$work_directory/core.pom" || result=1
+            for module in gameplay-core gameplay-libgdx gameplay-runtime gameplay-box2d gameplay-bullet; do
+              local base_path="io/github/teemuki8/$module/$version"
+              for suffix in .jar -sources.jar -javadoc.jar .pom; do
+                local filename="$module-$version$suffix"
+                curl --fail-with-body --silent --show-error \
+                  --header "Authorization: Bearer $authorization" \
+                  --output "$work_directory/$filename" \
+                  "$central_api/deployment/$deployment_id/download/$base_path/$filename" || result=1
+                if [[ "$suffix" == *jar ]]; then
+                  unzip -Z1 "$work_directory/$filename" > "$work_directory/entries" || result=1
+                  grep --quiet --fixed-strings --line-regexp META-INF/LICENSE "$work_directory/entries" || result=1
+                  grep --quiet --fixed-strings --line-regexp META-INF/NOTICE "$work_directory/entries" || result=1
+                else
+                  grep --quiet '<name>Teemu Jääskeläinen</name>' "$work_directory/$filename" || result=1
+                  grep --quiet '<email>teemuki8@users.noreply.github.com</email>' "$work_directory/$filename" || result=1
+                  grep --quiet "<artifactId>$module</artifactId>" "$work_directory/$filename" || result=1
+                  grep --quiet "<version>$version</version>" "$work_directory/$filename" || result=1
+                fi
+              done
+            done
             rm -rf -- "$work_directory"
             return "$result"
           }
@@ -149,6 +151,7 @@ jobs:
             fi
             expected_purls="$(printf '%s\n' \
               "pkg:maven/io.github.teemuki8/gameplay-box2d@$version" \
+              "pkg:maven/io.github.teemuki8/gameplay-bullet@$version" \
               "pkg:maven/io.github.teemuki8/gameplay-core@$version" \
               "pkg:maven/io.github.teemuki8/gameplay-libgdx@$version" \
               "pkg:maven/io.github.teemuki8/gameplay-runtime@$version" | sort)"
