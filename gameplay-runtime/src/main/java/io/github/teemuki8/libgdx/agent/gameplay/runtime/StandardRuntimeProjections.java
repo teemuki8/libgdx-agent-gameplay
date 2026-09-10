@@ -11,8 +11,14 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.component.Movement;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Render;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Sprite;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform2D;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform3D;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.Velocity3D;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.Aim3D;
+
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.Rgba;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec2;
+import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec3;
+import io.github.teemuki8.libgdx.agent.gameplay.core.value.QuaternionValue;
 import io.github.teemuki8.libgdx.agent.gameplay.core.world.EntitySnapshot;
 import io.github.teemuki8.libgdx.agent.runtime.core.RuntimeValue;
 import io.github.teemuki8.libgdx.agent.runtime.core.RuntimeValues;
@@ -24,6 +30,16 @@ import java.util.function.BiFunction;
 /** Explicit projections for all V1 standard gameplay components. */
 public final class StandardRuntimeProjections {
     private static final RuntimeProjectionRegistry REGISTRY = RuntimeProjectionRegistry.builder()
+            .register(projection(Transform3D.TYPE, (entity, value) -> Map.of(
+                    "transform3d.position", vector(value.position()),
+                    "transform3d.rotation", quaternion(value.rotation()),
+                    "transform3d.scale", vector(value.scale()))))
+            .register(projection(Velocity3D.TYPE, (entity, value) -> Map.of(
+                    "velocity3d.linear", vector(value.linear()))))
+            .register(projection(Aim3D.TYPE, (entity, value) -> Map.of(
+                    "aim3d.yawRadians", RuntimeValues.decimal(value.yawRadians()),
+                    "aim3d.pitchRadians", RuntimeValues.decimal(value.pitchRadians()),
+                    "aim3d.direction", vector(value.direction()))))
             .register(projection(Transform2D.TYPE, (entity, value) -> Map.of(
                     "transform.position", vector(value.position()),
                     "transform.rotation", RuntimeValues.decimal(value.rotationRadians()),
@@ -71,6 +87,21 @@ public final class StandardRuntimeProjections {
     /** Returns the immutable standard projection registry. */
     public static RuntimeProjectionRegistry registry() {
         return REGISTRY;
+    }
+
+    private static RuntimeValue vector(Vec3 value) {
+        return RuntimeValues.object(
+                RuntimeValues.field("x", RuntimeValues.decimal(value.x())),
+                RuntimeValues.field("y", RuntimeValues.decimal(value.y())),
+                RuntimeValues.field("z", RuntimeValues.decimal(value.z())));
+    }
+
+    private static RuntimeValue quaternion(QuaternionValue value) {
+        return RuntimeValues.object(
+                RuntimeValues.field("x", RuntimeValues.decimal(value.x())),
+                RuntimeValues.field("y", RuntimeValues.decimal(value.y())),
+                RuntimeValues.field("z", RuntimeValues.decimal(value.z())),
+                RuntimeValues.field("w", RuntimeValues.decimal(value.w())));
     }
 
     private static RuntimeValue vector(Vec2 value) {

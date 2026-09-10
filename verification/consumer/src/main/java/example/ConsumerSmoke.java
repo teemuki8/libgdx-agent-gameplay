@@ -7,8 +7,9 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.world.GameWorld;
 import io.github.teemuki8.libgdx.agent.gameplay.libgdx.FixedStepLoop;
 import io.github.teemuki8.libgdx.agent.gameplay.runtime.GameplayRuntimeBridge;
 import java.util.List;
+import io.github.teemuki8.libgdx.agent.gameplay.bullet.CharacterConfig;
 
-/** External compile/runtime proof for all four Maven publications. */
+/** External compile/runtime proof for all five Maven publications. */
 public final class ConsumerSmoke {
     private ConsumerSmoke() {
     }
@@ -19,11 +20,14 @@ public final class ConsumerSmoke {
                 FixedStepLoop.class, GameplayRuntimeBridge.class, GameplayBox2dBridge.class);
         try (GameWorld world = GameWorld.builder(
                 GameplayLimits.defaults(), StandardComponents.registry()).build()) {
+            if (CharacterConfig.defaults().heightAt(1) != 1.0) {
+                throw new IllegalStateException("published Bullet configuration is inconsistent");
+            }
             world.step();
             if (world.snapshot().tick() != 0 || adapterTypes.size() != 3) {
                 throw new IllegalStateException("published gameplay contract is inconsistent");
             }
         }
-        System.out.println("verified gameplay-core/libgdx/runtime/box2d");
+        System.out.println("verified gameplay-core/libgdx/runtime/box2d/bullet");
     }
 }

@@ -70,10 +70,11 @@ jobs:
           release_version="${RELEASE_TAG#v}"
           xvfb-run -a ./gradlew \
             -PreleaseVersion="$release_version" \
+            -PapiBaselineVersion=1.4.0 \
             clean check javadoc apiCompatibility \
             verifyPublicationArchives verifyPublishedPoms \
             publishAllPublicationsToMavenCentralRepository \
-            --warning-mode=fail
+            --warning-mode=fail --no-configuration-cache --no-daemon
       - name: Transfer deployment to Central Portal
         shell: bash
         run: |

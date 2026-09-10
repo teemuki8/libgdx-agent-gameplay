@@ -12,8 +12,14 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.component.Movement;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Render;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Sprite;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform2D;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform3D;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.Velocity3D;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.Aim3D;
+
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.Rgba;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec2;
+import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec3;
+import io.github.teemuki8.libgdx.agent.gameplay.core.value.QuaternionValue;
 import java.util.LinkedHashMap;
 import java.util.Collections;
 import java.util.Map;
@@ -36,6 +42,15 @@ public final class StandardComponentCodecs {
 
     private static ComponentCodecRegistry createRegistry() {
         return ComponentCodecRegistry.builder()
+                .register(codec(Transform3D.TYPE, Set.of("position", "rotation", "scale"), fields ->
+                        new Transform3D(fields.optionalVec3("position", Vec3.ZERO),
+                                fields.optionalQuaternion("rotation", QuaternionValue.IDENTITY),
+                                fields.optionalVec3("scale", Vec3.ONE))))
+                .register(codec(Velocity3D.TYPE, Set.of("linear"), fields ->
+                        new Velocity3D(fields.requireVec3("linear"))))
+                .register(codec(Aim3D.TYPE, Set.of("yawRadians", "pitchRadians"), fields ->
+                        new Aim3D(fields.requireDouble("yawRadians"),
+                                fields.requireDouble("pitchRadians"))))
                 .register(codec(Transform2D.TYPE,
                         Set.of("position", "rotationRadians", "size", "pivot"), fields ->
                                 new Transform2D(

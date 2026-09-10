@@ -16,6 +16,10 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.component.Movement;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Render;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Sprite;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform2D;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform3D;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.Velocity3D;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.Aim3D;
+
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnosticCode;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.DamageApplied;
@@ -34,6 +38,7 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.event.ObjectiveCompleted;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.ProjectileCreated;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.Rgba;
 import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec2;
+import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec3;
 import io.github.teemuki8.libgdx.agent.gameplay.core.world.EntitySnapshot;
 import io.github.teemuki8.libgdx.agent.gameplay.core.world.WorldSnapshot;
 import java.io.ByteArrayOutputStream;
@@ -172,7 +177,19 @@ public final class CanonicalWorldEncoder {
     /** Encodes one immutable standard component in its stable V1 field order. */
     public static void encodeStandardComponent(
             CanonicalComponentWriter writer, Component component) {
-        if (component instanceof Transform2D transform) {
+        if (component instanceof Transform3D transform) {
+            vector(writer, transform.position());
+            writer.decimal(transform.rotation().x());
+            writer.decimal(transform.rotation().y());
+            writer.decimal(transform.rotation().z());
+            writer.decimal(transform.rotation().w());
+            vector(writer, transform.scale());
+        } else if (component instanceof Velocity3D velocity) {
+            vector(writer, velocity.linear());
+        } else if (component instanceof Aim3D aim) {
+            writer.decimal(aim.yawRadians());
+            writer.decimal(aim.pitchRadians());
+        } else if (component instanceof Transform2D transform) {
             vector(writer, transform.position());
             writer.decimal(transform.rotationRadians());
             vector(writer, transform.size());
@@ -315,6 +332,12 @@ public final class CanonicalWorldEncoder {
         } else {
             throw unsupported("canonical typed event attribute", value.getClass().getName());
         }
+    }
+
+    private static void vector(CanonicalComponentWriter writer, Vec3 value) {
+        writer.decimal(value.x());
+        writer.decimal(value.y());
+        writer.decimal(value.z());
     }
 
     private static void vector(CanonicalComponentWriter writer, Vec2 value) {

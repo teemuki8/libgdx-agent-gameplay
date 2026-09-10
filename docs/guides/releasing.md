@@ -10,16 +10,20 @@ For an authorized version `X.Y.Z`:
 2. Run `xvfb-run -a ./gradlew clean check javadoc apiCompatibility
    verifyPublicationArchives verifyPublishedPoms --warning-mode=fail`.
 3. Run `./scripts/verify-maven-local.sh`; it publishes the property-driven `1.0.0-SNAPSHOT` to a
-   disposable repository and compiles/runs an external consumer against all four coordinates.
+   disposable repository and compiles/runs an external consumer against all five coordinates.
 4. If a released baseline exists, repeat with `-PapiBaselineVersion=<previous-version>`.
 5. Refresh strict verification metadata after dependency/build-tool changes and review every
    binary, metadata, source, and IDEA-tooling addition.
 6. Only with explicit release authorization, create the exact semantic `vX.Y.Z` release. The
    staging workflow checks, signs, uploads, and transfers with `publishing_type=user_managed`.
 7. Inspect the Central deployment. Publication requires a second deliberate `publish` operation
-   whose validated PURLs exactly match all four coordinates. A failed candidate may be dropped only
+   whose validated PURLs exactly match all five coordinates. A failed candidate may be dropped only
    by the manual management workflow.
 
 Required protected-environment values are Central username/password, armored in-memory signing
 key/password, and Central namespace. Credentials, signing material, and authorization headers must
 never be committed, logged, included in protocol data, or stored in build artifacts.
+
+For 1.5.0, use `-PreleaseVersion=1.5.0 -PapiBaselineVersion=1.4.0 --no-configuration-cache`.
+The four existing modules compare against real 1.4.0 binaries. Bullet first publishes in 1.5.0,
+so its comparison explicitly skips older baselines; it is included once the baseline is 1.5.0 or newer.

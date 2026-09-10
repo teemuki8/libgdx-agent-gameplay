@@ -4,6 +4,9 @@ package io.github.teemuki8.libgdx.agent.gameplay.core.component;
 public final class StandardComponents {
     private static final ComponentRegistry REGISTRY = ComponentRegistry.builder()
             .register(Transform2D.TYPE)
+            .register(Transform3D.TYPE)
+            .register(Velocity3D.TYPE)
+            .register(Aim3D.TYPE)
             .register(Movement.TYPE)
             .register(Health.TYPE)
             .register(Faction.TYPE)
@@ -24,6 +27,7 @@ public final class StandardComponents {
 
     static ComponentCodec<?> codec(ComponentType<?> type) {
         if (!java.util.Set.of(
+                Transform3D.TYPE, Velocity3D.TYPE, Aim3D.TYPE,
                 Transform2D.TYPE, Movement.TYPE, Health.TYPE, Faction.TYPE,
                 Lifetime.TYPE, Collider.TYPE, Sprite.TYPE, Animation.TYPE,
                 Render.TYPE).contains(type)) {

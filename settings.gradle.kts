@@ -34,6 +34,7 @@ include(
     "gameplay-libgdx",
     "gameplay-runtime",
     "gameplay-box2d",
+    "gameplay-bullet",
     "gameplay-fixture",
     "box2d3-spike",
 )

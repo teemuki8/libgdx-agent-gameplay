@@ -15,6 +15,7 @@ dependencies {
     implementation("io.github.teemuki8:gameplay-libgdx:1.0.0-SNAPSHOT")
     implementation("io.github.teemuki8:gameplay-runtime:1.0.0-SNAPSHOT")
     implementation("io.github.teemuki8:gameplay-box2d:1.0.0-SNAPSHOT")
+    implementation("io.github.teemuki8:gameplay-bullet:1.0.0-SNAPSHOT")
 }
 
 tasks.withType<JavaCompile>().configureEach {

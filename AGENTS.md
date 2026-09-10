@@ -23,15 +23,16 @@ Current baseline: JDK 25, Gradle wrapper 9.7.0, libGDX core 1.14.2, official Box
 
 ## Module boundaries
 
-The four published modules and one non-published fixture are:
+The five published modules and one non-published fixture are:
 
 ```text
 gameplay-core
 ├── gameplay-libgdx
 ├── gameplay-runtime
-└── gameplay-box2d
+├── gameplay-box2d
+└── gameplay-bullet
 
-gameplay-fixture -> all four modules + markup + harness
+gameplay-fixture -> the four original modules + markup + harness
 ```
 
 - `gameplay-core` is GL-free. It owns IDs, components, limits, diagnostics, commands, events,
@@ -43,6 +44,7 @@ gameplay-fixture -> all four modules + markup + harness
   `AgentRuntime`.
 - `gameplay-box2d` owns stable mappings and bridge-created bodies/fixtures while the application
   owns the Box2D `World`.
+- `gameplay-bullet` is the optional owner-thread Bullet collision world and capsule movement adapter; native identities remain private.
 - `gameplay-fixture` proves the complete contract and is never published.
 
 Do not add reverse dependencies, a second gameplay/runtime authority, a new gameplay MCP, or a
@@ -125,7 +127,7 @@ repair, or release readiness does not authorize a version tag, GitHub release, C
 Central publish/drop action, or release-workflow dispatch. Those actions require separate explicit
 authorization.
 
-Only `gameplay-core`, `gameplay-libgdx`, `gameplay-runtime`, and `gameplay-box2d` are publishable.
+Only `gameplay-core`, `gameplay-libgdx`, `gameplay-runtime`, `gameplay-box2d`, and `gameplay-bullet` are publishable.
 `gameplay-fixture` is qualification-only and must never enter a library JAR, POM, or Central
 deployment. Initial API compatibility tasks explicitly skip until a real released baseline is
 supplied with `-PapiBaselineVersion`; never invent a baseline. Disposable

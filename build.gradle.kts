@@ -122,6 +122,7 @@ val publishedModules = listOf(
     "gameplay-libgdx",
     "gameplay-runtime",
     "gameplay-box2d",
+    "gameplay-bullet",
 )
 val releaseVersion = providers.gradleProperty("releaseVersion").orElse("1.0.0-SNAPSHOT")
 val repositoryUrl = "https://github.com/teemuki8/libgdx-agent-gameplay"
@@ -344,13 +345,18 @@ val apiCompatibilityTasks = publishedModules.map { module ->
         isCanBeConsumed = false
         isCanBeResolved = true
     }
-    if (apiBaselineVersion.isPresent) {
+    // Bullet first ships in 1.5.0: older releases have no artifact to compare.
+    val baselineParts = apiBaselineVersion.orNull?.substringBefore('-')?.split('.')
+        ?.map(String::toInt)
+    val baselineAvailable = baselineParts != null && (module != "gameplay-bullet"
+        || baselineParts[0] > 1 || (baselineParts[0] == 1 && baselineParts[1] >= 5))
+    if (baselineAvailable) {
         dependencies.add(
             baseline.name,
             "io.github.teemuki8:$module:${apiBaselineVersion.get()}@jar",
         )
     }
-    if (apiBaselineVersion.isPresent) {
+    if (baselineAvailable) {
         tasks.register<JavaExec>("apiCompatibility$suffix") {
             group = "verification"
             description = "Checks $module against the configured released API baseline."
@@ -389,7 +395,7 @@ val apiCompatibilityTasks = publishedModules.map { module ->
             group = "verification"
             description = "Reports the intentional initial-release API baseline skip for $module."
             doLast {
-                logger.lifecycle("Skipping $name: no released API baseline exists yet")
+                logger.lifecycle("Skipping $name: no $module artifact exists in baseline ${apiBaselineVersion.orNull ?: "(not configured)"}")
             }
         }
     }
@@ -444,6 +450,7 @@ val verifyStackVersionContract = tasks.register("verifyStackVersionContract") {
         "gameplay-libgdx" to layout.projectDirectory.file("gameplay-libgdx/build.gradle.kts"),
         "gameplay-runtime" to layout.projectDirectory.file("gameplay-runtime/build.gradle.kts"),
         "gameplay-box2d" to layout.projectDirectory.file("gameplay-box2d/build.gradle.kts"),
+        "gameplay-bullet" to layout.projectDirectory.file("gameplay-bullet/build.gradle.kts"),
         "gameplay-fixture" to layout.projectDirectory.file("gameplay-fixture/build.gradle.kts"),
     )
     inputs.files(listOf(catalog, wrapper) + moduleBuilds.values)
@@ -484,6 +491,7 @@ val verifyStackVersionContract = tasks.register("verifyStackVersionContract") {
             "gameplay-libgdx" to listOf("api(project(\":gameplay-core\"))"),
             "gameplay-runtime" to listOf("api(project(\":gameplay-core\"))"),
             "gameplay-box2d" to listOf("api(project(\":gameplay-core\"))"),
+            "gameplay-bullet" to listOf("api(project(\":gameplay-core\"))", "implementation(libs.gdx.bullet)"),
             "gameplay-fixture" to listOf(
                 "implementation(project(\":gameplay-core\"))",
                 "implementation(project(\":gameplay-libgdx\"))",
