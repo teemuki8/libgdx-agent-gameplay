@@ -61,12 +61,24 @@ network prediction, continuous moving-platform motion, or capsule-to-capsule com
 
 ## Snapshot rendering
 
-`GameplayRenderer3D(batch, perspectiveCamera, resolver, maxEntries)` consumes completed snapshots.
+`GameplayRenderer3D(batch, camera, resolver, maxEntries)` consumes completed snapshots.
 The resolver maps application-owned logical entity/model information to an application-owned
 `ModelInstance`, or null for invisible entities. It does not install a separate asset registry.
 Call `resize(width,height)` after viewport changes and update camera pose from completed state.
 Use `render(snapshot, environment)` for optional application-owned lighting. The application
 clears color/depth buffers and chooses the physical GL viewport before rendering.
+
+The development candidate adds a common `Camera` constructor accepting an `OrthographicCamera`.
+The published perspective constructor remains source- and binary-compatible. For orthographic
+projection, initialize a positive finite vertical span in world units. For example, construct
+`new OrthographicCamera(20, 12)` and call `renderer.resize(1600, 900)`: the vertical span remains
+12 world units and the horizontal span becomes approximately 21.3333. The application's current
+`zoom` still applies and is never reset. Invalid spans, zoom-scaled overflow and spans too small
+to represent a finite projection scale fail before changing either
+viewport dimension. Perspective cameras retain their previous pixel-dimension resize behavior.
+The application owns camera pose, clipping planes, zoom and any screen-to-world conversion;
+update these on the rendering thread. This additive API is currently a local candidate, not
+part of the published 1.5.0 release.
 
 The adapter bounds entries (1..4096), sorts stable IDs, frustum-culls transformed model bounds,
 applies snapshot transforms only while preparing renderables, and restores model transforms.
