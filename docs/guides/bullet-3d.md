@@ -70,7 +70,10 @@ caller-owned fixed step at a time. No fixed player-count or game-rule ceiling is
 Each `BulletRigidBodySpec` supplies a stable `EntityId`, metre-scale BOX, Y-axis CAPSULE or SPHERE
 bounds, unit-scale pose, mass, damping, surface values and collision bits. Initial linear and
 angular velocity are copied during creation. `applyCentralImpulse` and `applyImpulse` accept
-copied SI values; point impulses derive the relative centre offset inside the adapter. A
+copied SI values; point impulses derive the relative centre offset inside the adapter.
+`applyCentralForce` and `applyTorque` accept bounded SI values before the caller-owned fixed step,
+wake the dynamic body, and affect that step only. The application owns controller tuning and
+decides whether to repeat them; impulses remain the separate one-shot operation for impacts. A
 `BulletSixDofConstraintSpec` locks an oriented anchor frame's translation and applies ordered
 angular limits around its local axes between two stable body IDs. Its convenience constructor
 uses world-aligned axes. X/Z stay in [-PI, PI], while Bullet requires Y in [-PI/2, PI/2]. The application supplies the stable

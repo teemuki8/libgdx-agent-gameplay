@@ -88,6 +88,36 @@ final class GameplayBulletDynamicsWorldTest {
                 "World-aligned and yawed asymmetric hinges must not behave as the same frame");
     }
 
+    @Test void continuousForceSupportsAndTorqueTurnsDynamicBody() {
+        EntityId supported = EntityId.of("supported");
+        EntityId falling = EntityId.of("falling");
+        try (var world = new GameplayBulletDynamicsWorld(new BulletDynamicsLimits(3, 0),
+                new Vec3(0, -9.81, 0))) {
+            world.add(FLOOR, body(new Vec3(0, -.5, 0), new Vec3(8, 1, 8), 0));
+            world.add(supported, body(new Vec3(-2, 3, 0), new Vec3(.5, .5, .5), 2));
+            world.add(falling, body(new Vec3(2, 3, 0), new Vec3(.5, .5, .5), 2));
+
+            for (int tick = 0; tick < 60; tick++) {
+                world.applyCentralForce(supported, new Vec3(0, 19.62, 0));
+                world.applyTorque(supported, new Vec3(0, 2, 0));
+                world.step(1d / 60);
+            }
+
+            var controlled = world.state(supported).orElseThrow();
+            var uncontrolled = world.state(falling).orElseThrow();
+            assertTrue(controlled.position().y() > uncontrolled.position().y() + 1,
+                    "An equal-and-opposite continuous force must support the dynamic body");
+            assertTrue(Math.abs(controlled.rotation().y()) > .05,
+                    "A continuous yaw torque must rotate the dynamic body");
+            assertThrows(IllegalArgumentException.class,
+                    () -> world.applyCentralForce(FLOOR, new Vec3(0, 1, 0)));
+            assertThrows(IllegalArgumentException.class,
+                    () -> world.applyTorque(FLOOR, new Vec3(0, 1, 0)));
+            assertThrows(IllegalArgumentException.class,
+                    () -> world.applyCentralForce(supported, new Vec3(1_000_001, 0, 0)));
+        }
+    }
+
     private static QuaternionValue hingeResponse(QuaternionValue anchorRotation) {
         try (var world = new GameplayBulletDynamicsWorld(new BulletDynamicsLimits(2, 1), Vec3.ZERO)) {
             world.add(FLOOR, body(Vec3.ZERO, new Vec3(1, 1, 1), 0));

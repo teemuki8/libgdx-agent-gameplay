@@ -150,10 +150,7 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
     /** Applies one finite world-space impulse to a dynamic body. */
     public void applyCentralImpulse(EntityId id, Vec3 impulseNewtonSeconds) {
         requireOpen();
-        Body body = requireBody(id);
-        if (body.mass() <= 0) {
-            throw new IllegalArgumentException("static body cannot receive impulse: " + id);
-        }
+        Body body = requireDynamicBody(id, "impulse");
         body.body().activate();
         body.body().applyCentralImpulse(vector(Objects.requireNonNull(impulseNewtonSeconds, "impulseNewtonSeconds")));
     }
@@ -161,15 +158,28 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
     /** Applies a finite impulse at a world point, allowing bounded impact torque. */
     public void applyImpulse(EntityId id, Vec3 impulseNewtonSeconds, Vec3 worldPoint) {
         requireOpen();
-        Body body = requireBody(id);
-        if (body.mass() <= 0) {
-            throw new IllegalArgumentException("static body cannot receive impulse: " + id);
-        }
+        Body body = requireDynamicBody(id, "impulse");
         Vector3 point = vector(Objects.requireNonNull(worldPoint, "worldPoint"));
         Vector3 centre = new Vector3();
         body.body().getWorldTransform().getTranslation(centre);
         body.body().activate();
         body.body().applyImpulse(vector(Objects.requireNonNull(impulseNewtonSeconds, "impulseNewtonSeconds")), point.sub(centre));
+    }
+
+    /** Applies a finite world-space force for the caller's next fixed physics step. */
+    public void applyCentralForce(EntityId id, Vec3 forceNewtons) {
+        requireOpen();
+        Body body = requireDynamicBody(id, "force");
+        body.body().activate();
+        body.body().applyCentralForce(vector(Objects.requireNonNull(forceNewtons, "forceNewtons")));
+    }
+
+    /** Applies a finite world-space torque for the caller's next fixed physics step. */
+    public void applyTorque(EntityId id, Vec3 torqueNewtonMetres) {
+        requireOpen();
+        Body body = requireDynamicBody(id, "torque");
+        body.body().activate();
+        body.body().applyTorque(vector(Objects.requireNonNull(torqueNewtonMetres, "torqueNewtonMetres")));
     }
 
     /** Advances exactly one caller-owned fixed step in seconds. */
@@ -233,6 +243,14 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
         Body body = bodies.get(Objects.requireNonNull(id, "id"));
         if (body == null) {
             throw new IllegalArgumentException("unknown body: " + id);
+        }
+        return body;
+    }
+
+    private Body requireDynamicBody(EntityId id, String operation) {
+        Body body = requireBody(id);
+        if (body.mass() <= 0) {
+            throw new IllegalArgumentException("static body cannot receive " + operation + ": " + id);
         }
         return body;
     }
