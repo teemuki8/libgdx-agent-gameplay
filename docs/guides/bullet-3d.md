@@ -59,6 +59,29 @@ with a teleport. Body count is 1..4096; dimensions/tick duration/coordinates are
 native calls. This is a kinematic static-obstacle adapter, not dynamic rigid-body simulation,
 network prediction, continuous moving-platform motion, or capsule-to-capsule combat collision.
 
+## Primitive rigid dynamics candidate
+
+`GameplayBulletDynamicsWorld` is a separate application-owned native world for bounded static
+and dynamic primitive bodies. Its development-candidate API does not change the published
+`GameplayBulletWorld` collision and character-motor contract. The application selects explicit
+ceilings of 1..4096 bodies and 0..8192 constraints, supplies gravity, and advances exactly one
+caller-owned fixed step at a time. No fixed player-count or game-rule ceiling is installed.
+
+Each `BulletRigidBodySpec` supplies a stable `EntityId`, metre-scale BOX, Y-axis CAPSULE or SPHERE
+bounds, unit-scale pose, mass, damping, surface values and collision bits. Initial linear and
+angular velocity are copied during creation. `applyCentralImpulse` and `applyImpulse` accept
+copied SI values; point impulses derive the relative centre offset inside the adapter. A
+`BulletSixDofConstraintSpec` locks an oriented anchor frame's translation and applies ordered
+angular limits around its local axes between two stable body IDs. Its convenience constructor
+uses world-aligned axes. X/Z stay in [-PI, PI], while Bullet requires Y in [-PI/2, PI/2]. The application supplies the stable
+`BulletConstraintId`. Native bodies, shapes, motion states and constraints never cross the API.
+
+Read state through copied `BulletRigidBodyState` pose and velocities after the fixed step. Remove
+constraints before their bodies. `close()` does this ordering for all remaining resources and is
+idempotent on the construction thread. All mutation, reads, steps and disposal are owner-thread
+confined. This layer provides physical building blocks only: rig proportions, transition rules,
+rendering, corpse lifetime, active motors, recovery and replication belong to the consuming game.
+
 ## Snapshot rendering
 
 `GameplayRenderer3D(batch, camera, resolver, maxEntries)` consumes completed snapshots.
