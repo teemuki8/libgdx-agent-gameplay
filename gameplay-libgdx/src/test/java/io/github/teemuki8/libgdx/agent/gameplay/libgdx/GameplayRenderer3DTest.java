@@ -2,7 +2,6 @@ package io.github.teemuki8.libgdx.agent.gameplay.libgdx;
 
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
@@ -36,7 +35,7 @@ class GameplayRenderer3DTest {
         config.setWindowedMode(96, 96);
         config.disableAudio(true);
         org.lwjgl.glfw.GLFW.glfwInitHint(org.lwjgl.glfw.GLFW.GLFW_PLATFORM, org.lwjgl.glfw.GLFW.GLFW_PLATFORM_X11);
-        new Lwjgl3Application(new ApplicationAdapter() {
+        new RendererTestApplication(new ApplicationAdapter() {
             @Override public void create() {
                 try {
                     var builder = new ModelBuilder();
