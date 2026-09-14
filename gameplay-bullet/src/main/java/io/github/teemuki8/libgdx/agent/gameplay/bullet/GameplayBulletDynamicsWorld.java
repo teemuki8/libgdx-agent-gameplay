@@ -16,6 +16,11 @@ import com.badlogic.gdx.physics.bullet.dynamics.btConstraintSolver;
 import com.badlogic.gdx.physics.bullet.dynamics.btDiscreteDynamicsWorld;
 import com.badlogic.gdx.physics.bullet.dynamics.btGeneric6DofConstraint;
 import com.badlogic.gdx.physics.bullet.dynamics.btRigidBody;
+import com.badlogic.gdx.physics.bullet.dynamics.btJointFeedback;
+import com.badlogic.gdx.physics.bullet.linearmath.btVector3;
+import io.github.teemuki8.libgdx.agent.runtime.core.AgentRuntime;
+import io.github.teemuki8.libgdx.agent.runtime.bullet.BulletContactLimits;
+import io.github.teemuki8.libgdx.agent.runtime.bullet.BulletContactTickPage;
 import com.badlogic.gdx.physics.bullet.dynamics.btSequentialImpulseConstraintSolver;
 import com.badlogic.gdx.physics.bullet.linearmath.btDefaultMotionState;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform3D;
@@ -43,6 +48,7 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
     private final btBroadphaseInterface broadphase;
     private final btConstraintSolver solver;
     private final btDiscreteDynamicsWorld world;
+    private BulletRuntimeObservation observation;
     private boolean closed;
     private long steps;
 
@@ -79,6 +85,37 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
         world = acquiredWorld;
     }
 
+    /**
+     * Enables bounded runtime inspection of this world and all existing and future bodies/joints.
+     * Register the runtime's fixed timeline before starting it. Thereafter call {@link #step(double)}
+     * inside one application-owned runtime simulation tick. Creation, removal and closing occur
+     * between capture frames, on this world's owner thread. This method never owns the runtime.
+     * Entity IDs are {@code bullet.body.<worldId>.<entityId>}, {@code bullet.shape.<worldId>.<entityId>}
+     * and {@code bullet.joint.<worldId>.<constraintId>}; world/contact IDs end in {@code <worldId>}.
+     */
+    public void observe(AgentRuntime runtime, String worldId, BulletContactLimits contactLimits) {
+        requireOpen();
+        if (observation != null) throw new IllegalStateException("Bullet world is already observed");
+        var candidate = new BulletRuntimeObservation(Objects.requireNonNull(runtime, "runtime"),
+                Objects.requireNonNull(worldId, "worldId"), world, limits,
+                Objects.requireNonNull(contactLimits, "contactLimits"));
+        try {
+            bodies.forEach((id, body) -> candidate.addBody(id, body.body(), body.shape()));
+            constraints.forEach((id, constraint) -> candidate.addJoint(id, constraint.nativeConstraint()));
+            observation = candidate;
+        } catch (RuntimeException | Error failure) {
+            candidate.close();
+            throw failure;
+        }
+    }
+
+    /** Returns immutable completed contact evidence; the world retains its capture/lifecycle handle. */
+    public BulletContactTickPage contactTicks(long fromTick, long toTick, int limit) {
+        requireOpen();
+        if (observation == null) throw new IllegalStateException("Bullet world is not observed");
+        return observation.contacts.ticks(fromTick, toTick, limit);
+    }
+
     /** Creates one private native body under its stable gameplay entity ID. */
     public void add(EntityId id, BulletRigidBodySpec spec) {
         add(id, spec, Vec3.ZERO, Vec3.ZERO);
@@ -87,6 +124,7 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
     /** Creates one body with copied initial linear and angular velocities for state transfer. */
     public void add(EntityId id, BulletRigidBodySpec spec, Vec3 linearVelocity, Vec3 angularVelocity) {
         requireOpen();
+        if (observation != null) observation.requireMutable();
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(spec, "spec");
         Objects.requireNonNull(linearVelocity, "linearVelocity");
@@ -100,6 +138,7 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
         btCollisionShape shape = shape(spec.shape());
         btDefaultMotionState motion = null;
         btRigidBody body = null;
+        boolean attached = false;
         try {
             motion = new btDefaultMotionState(initialPose);
             Vector3 inertia = new Vector3();
@@ -113,9 +152,12 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
             body.setLinearVelocity(initialLinearVelocity);
             body.setAngularVelocity(initialAngularVelocity);
             world.addRigidBody(body, spec.collisionGroup(), spec.collisionMask());
+            attached = true;
+            if (observation != null) observation.addBody(id, body, shape);
             bodies.put(id, new Body(body, motion, shape, spec.massKilograms()));
         } catch (RuntimeException | Error failure) {
             if (body != null) {
+                if (attached) world.removeRigidBody(body);
                 body.dispose();
             }
             dispose(motion);
@@ -127,6 +169,7 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
     /** Locks anchor translation and applies bounded XYZ angular limits between active endpoint bodies. */
     public void constrain(BulletConstraintId id, BulletSixDofConstraintSpec spec) {
         requireOpen();
+        if (observation != null) observation.requireMutable();
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(spec, "spec");
         if (constraints.size() >= limits.maxConstraints() || constraints.containsKey(id)) {
@@ -137,18 +180,42 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
         Matrix4 frameA = new Matrix4(first.body().getWorldTransform()).inv().mul(anchor);
         Matrix4 frameB = new Matrix4(second.body().getWorldTransform()).inv().mul(anchor);
         var constraint = new btGeneric6DofConstraint(first.body(), second.body(), frameA, frameB, true);
+        btJointFeedback feedback = null;
+        boolean attached = false;
         try {
+            feedback = feedback();
+            constraint.setJointFeedback(feedback);
+            constraint.enableFeedback(true);
             constraint.setLinearLowerLimit(Vector3.Zero);
             constraint.setLinearUpperLimit(Vector3.Zero);
             constraint.setAngularLowerLimit(vector(spec.angularLowerRadians()));
             constraint.setAngularUpperLimit(vector(spec.angularUpperRadians()));
             world.addConstraint(constraint, spec.disableLinkedCollision());
-            constraints.put(id, new Constraint(constraint, spec.first(), spec.second()));
+            attached = true;
             if (spec.disableLinkedCollision()) clearCachedContacts(first.mass() > 0 ? first : second);
+            if (observation != null) observation.addJoint(id, constraint);
+            constraints.put(id, new Constraint(constraint, spec.first(), spec.second(), feedback));
         } catch (RuntimeException | Error failure) {
+            if (attached) world.removeConstraint(constraint);
             constraint.dispose();
+            dispose(feedback);
             throw failure;
         }
+    }
+
+    private static btJointFeedback feedback() {
+        var feedback = new btJointFeedback();
+        var zero = new btVector3(0, 0, 0);
+        try {
+            feedback.setAppliedForceBodyA(zero);
+            feedback.setAppliedForceBodyB(zero);
+            feedback.setAppliedTorqueBodyA(zero);
+            feedback.setAppliedTorqueBodyB(zero);
+            return feedback;
+        } catch (RuntimeException | Error failure) {
+            feedback.dispose();
+            throw failure;
+        } finally { zero.dispose(); }
     }
 
     /** Applies one finite world-space impulse to a dynamic body. */
@@ -220,8 +287,12 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
         if (!Double.isFinite(fixedStepSeconds) || fixedStepSeconds < .001 || fixedStepSeconds > .1) {
             throw new IllegalArgumentException("fixed step must be .001..0.1 seconds");
         }
-        world.stepSimulation((float) fixedStepSeconds, 1, (float) fixedStepSeconds);
-        steps++;
+        Runnable step = () -> {
+            world.stepSimulation((float) fixedStepSeconds, 1, (float) fixedStepSeconds);
+            steps++;
+        };
+        if (observation == null) step.run();
+        else observation.contacts.captureStep(step);
     }
 
     /** Returns copied pose and velocity facts for one active body. */
@@ -245,10 +316,14 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
     /** Removes a constraint if present. */
     public void removeConstraint(BulletConstraintId id) {
         requireOpen();
-        Constraint constraint = constraints.remove(Objects.requireNonNull(id, "id"));
+        Objects.requireNonNull(id, "id");
+        if (observation != null) { observation.requireMutable();
+            observation.removeJoint(id); }
+        Constraint constraint = constraints.remove(id);
         if (constraint != null) {
             world.removeConstraint(constraint.nativeConstraint());
             constraint.nativeConstraint().dispose();
+            constraint.feedback().dispose();
         }
     }
 
@@ -259,6 +334,8 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
         if (constraints.values().stream().anyMatch(value -> value.first().equals(id) || value.second().equals(id))) {
             throw new IllegalStateException("remove body constraints first: " + id);
         }
+        if (observation != null) { observation.requireMutable();
+            observation.removeBody(id); }
         Body body = bodies.remove(id);
         if (body != null) {
             ignoredCollisions.removeIf(pair -> {
@@ -348,9 +425,12 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
         if (closed) {
             return;
         }
+        if (observation != null) { observation.close();
+            observation = null; }
         constraints.values().forEach(value -> {
             world.removeConstraint(value.nativeConstraint());
             value.nativeConstraint().dispose();
+            value.feedback().dispose();
         });
         constraints.clear();
         ignoredCollisions.clear();
@@ -366,7 +446,8 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
 
     private record Body(btRigidBody body, btDefaultMotionState motion, btCollisionShape shape, double mass) { }
 
-    private record Constraint(btGeneric6DofConstraint nativeConstraint, EntityId first, EntityId second) { }
+    private record Constraint(btGeneric6DofConstraint nativeConstraint, EntityId first, EntityId second,
+            btJointFeedback feedback) { }
 
     private record BodyPair(EntityId first, EntityId second) {
         private static BodyPair of(EntityId first, EntityId second) {

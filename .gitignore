@@ -5,3 +5,6 @@
 out/
 hs_err_pid*
 *.log
+
+# Explicit composite-build qualification locks; published locks remain authoritative.
+gradle-runtime-candidate.lockfile

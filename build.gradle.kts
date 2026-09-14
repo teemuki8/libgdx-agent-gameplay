@@ -143,6 +143,9 @@ subprojects {
 
     dependencyLocking {
         lockAllConfigurations()
+        if (providers.gradleProperty("runtimeCandidate").isPresent) {
+            lockFile = file("gradle-runtime-candidate.lockfile")
+        }
     }
 
     dependencies {
@@ -461,7 +464,7 @@ val verifyStackVersionContract = tasks.register("verifyStackVersionContract") {
             "gdx" to "1.14.2",
             "jackson" to "2.22.1",
             "gdx-box2d3" to "3.1.1-0",
-            "agent-runtime" to "3.0.0",
+            "agent-runtime" to "3.2.0",
             "harness" to "1.2.1",
             "markup" to "0.5.0",
             "junit" to "6.1.3",
