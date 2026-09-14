@@ -70,7 +70,7 @@ jobs:
           release_version="${RELEASE_TAG#v}"
           xvfb-run -a ./gradlew \
             -PreleaseVersion="$release_version" \
-            -PapiBaselineVersion=1.4.0 \
+            -PapiBaselineVersion=1.5.0 \
             clean check javadoc apiCompatibility \
             verifyPublicationArchives verifyPublishedPoms \
             publishAllPublicationsToMavenCentralRepository \

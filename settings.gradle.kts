@@ -38,3 +38,15 @@ include(
     "gameplay-fixture",
     "box2d3-spike",
 )
+
+// Explicit library-development substitution; released consumers use Central coordinates.
+providers.gradleProperty("runtimeCandidate").orNull?.let { candidate ->
+    includeBuild(candidate) {
+        name = "runtime-candidate"
+        dependencySubstitution {
+            listOf("core", "libgdx", "box2d", "bullet", "protocol", "mcp").forEach { name ->
+                substitute(module("io.github.teemuki8:agent-runtime-$name")).using(project(":runtime-$name"))
+            }
+        }
+    }
+}

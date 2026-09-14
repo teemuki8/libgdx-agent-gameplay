@@ -88,6 +88,110 @@ final class GameplayBulletDynamicsWorldTest {
                 "World-aligned and yawed asymmetric hinges must not behave as the same frame");
     }
 
+    @Test void continuousForceSupportsAndTorqueTurnsDynamicBody() {
+        EntityId supported = EntityId.of("supported");
+        EntityId falling = EntityId.of("falling");
+        try (var world = new GameplayBulletDynamicsWorld(new BulletDynamicsLimits(3, 0),
+                new Vec3(0, -9.81, 0))) {
+            world.add(FLOOR, body(new Vec3(0, -.5, 0), new Vec3(8, 1, 8), 0));
+            world.add(supported, body(new Vec3(-2, 3, 0), new Vec3(.5, .5, .5), 2));
+            world.add(falling, body(new Vec3(2, 3, 0), new Vec3(.5, .5, .5), 2));
+
+            for (int tick = 0; tick < 60; tick++) {
+                world.applyCentralForce(supported, new Vec3(0, 19.62, 0));
+                world.applyTorque(supported, new Vec3(0, 2, 0));
+                world.step(1d / 60);
+            }
+
+            var controlled = world.state(supported).orElseThrow();
+            var uncontrolled = world.state(falling).orElseThrow();
+            assertTrue(controlled.position().y() > uncontrolled.position().y() + 1,
+                    "An equal-and-opposite continuous force must support the dynamic body");
+            assertTrue(Math.abs(controlled.rotation().y()) > .05,
+                    "A continuous yaw torque must rotate the dynamic body");
+            assertThrows(IllegalArgumentException.class,
+                    () -> world.applyCentralForce(FLOOR, new Vec3(0, 1, 0)));
+            assertThrows(IllegalArgumentException.class,
+                    () -> world.applyTorque(FLOOR, new Vec3(0, 1, 0)));
+            assertThrows(IllegalArgumentException.class,
+                    () -> world.applyCentralForce(supported, new Vec3(1_000_001, 0, 0)));
+        }
+    }
+
+    @Test void ignoredBodyPairMayOverlapAndCanBeRestoredWithoutNativeIdentityLeakage() {
+        EntityId first = EntityId.of("first");
+        EntityId second = EntityId.of("second");
+        try (var world = new GameplayBulletDynamicsWorld(new BulletDynamicsLimits(2, 0), Vec3.ZERO)) {
+            world.add(first, body(Vec3.ZERO, Vec3.ONE, 1));
+            world.add(second, body(Vec3.ZERO, Vec3.ONE, 1));
+            world.setCollisionIgnored(first, second, true);
+            // Repeating a setter, including reversed endpoint order, must remain idempotent.
+            for (int repeat = 0; repeat < 64; repeat++) world.setCollisionIgnored(second, first, true);
+            for (int tick = 0; tick < 20; tick++) world.step(1d / 60);
+            assertTrue(distance(world.state(first).orElseThrow().position(),
+                    world.state(second).orElseThrow().position()) < .05,
+                    "An explicitly ignored self-collision pair must remain overlapped");
+
+            world.setCollisionIgnored(first, second, false);
+            world.applyCentralImpulse(first, new Vec3(.01, 0, 0));
+            for (int tick = 0; tick < 20; tick++) world.step(1d / 60);
+            assertTrue(distance(world.state(first).orElseThrow().position(),
+                    world.state(second).orElseThrow().position()) > .2,
+                    "Restoring collision must let Bullet resolve the overlap again");
+            assertThrows(IllegalArgumentException.class, () -> world.setCollisionIgnored(first, first, true));
+        }
+    }
+
+    @Test void clearingAnAbsentExplicitFilterPreservesConstraintCollisionSuppression() {
+        assertEquals(linkedOverlap(false), linkedOverlap(true),
+                "Clearing an absent explicit exception must leave constraint-owned contact filtering intact");
+    }
+
+    @Test void ignoringAnExistingFloorContactReleasesItsSupport() {
+        try (var world = settledFloorContact()) {
+            world.setCollisionIgnored(UPPER, FLOOR, true);
+            world.applyCentralImpulse(UPPER, new Vec3(0, -.01, 0));
+            for (int tick = 0; tick < 60; tick++) world.step(1d / 60);
+            assertTrue(world.state(UPPER).orElseThrow().position().y() < -1,
+                    "A previously touching ignored floor must stop supporting the dynamic body");
+        }
+    }
+
+    @Test void aNewConstraintCanSuppressAnExistingFloorContact() {
+        try (var world = settledFloorContact()) {
+            Vec3 centre = world.state(UPPER).orElseThrow().position();
+            world.constrain(new BulletConstraintId("free-hinge"), new BulletSixDofConstraintSpec(FLOOR, UPPER,
+                    centre, new Vec3(-1.2, 0, 0), new Vec3(1.2, 0, 0), true));
+            for (int tick = 0; tick < 60; tick++) {
+                world.applyTorque(UPPER, new Vec3(1, 0, 0));
+                world.step(1d / 60);
+            }
+            assertTrue(Math.abs(world.state(UPPER).orElseThrow().rotation().x()) > .2,
+                    "Constraint-owned suppression must release cached floor contacts so the hinge can turn");
+        }
+    }
+
+    private static GameplayBulletDynamicsWorld settledFloorContact() {
+        var world = new GameplayBulletDynamicsWorld(new BulletDynamicsLimits(2, 1), new Vec3(0, -9.81, 0));
+        world.add(FLOOR, body(new Vec3(0, -.5, 0), new Vec3(8, 1, 8), 0));
+        world.add(UPPER, body(new Vec3(0, 1, 0), Vec3.ONE, 1));
+        for (int tick = 0; tick < 180; tick++) world.step(1d / 60);
+        return world;
+    }
+
+    private static BulletRigidBodyState linkedOverlap(boolean clearExplicitFilter) {
+        try (var world = new GameplayBulletDynamicsWorld(new BulletDynamicsLimits(2, 1), Vec3.ZERO)) {
+            world.add(UPPER, body(Vec3.ZERO, Vec3.ONE, 0));
+            world.add(LOWER, body(new Vec3(0, .25, 0), Vec3.ONE, 1));
+            world.constrain(new BulletConstraintId("linked"), new BulletSixDofConstraintSpec(UPPER, LOWER,
+                    Vec3.ZERO, new Vec3(-1, 0, 0), new Vec3(1, 0, 0), true));
+            if (clearExplicitFilter) world.setCollisionIgnored(UPPER, LOWER, false);
+            world.applyTorque(LOWER, new Vec3(1, 0, 0));
+            for (int tick = 0; tick < 60; tick++) world.step(1d / 60);
+            return world.state(LOWER).orElseThrow();
+        }
+    }
+
     private static QuaternionValue hingeResponse(QuaternionValue anchorRotation) {
         try (var world = new GameplayBulletDynamicsWorld(new BulletDynamicsLimits(2, 1), Vec3.ZERO)) {
             world.add(FLOOR, body(Vec3.ZERO, new Vec3(1, 1, 1), 0));

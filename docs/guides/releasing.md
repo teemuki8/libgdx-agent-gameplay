@@ -24,6 +24,5 @@ Required protected-environment values are Central username/password, armored in-
 key/password, and Central namespace. Credentials, signing material, and authorization headers must
 never be committed, logged, included in protocol data, or stored in build artifacts.
 
-For 1.5.0, use `-PreleaseVersion=1.5.0 -PapiBaselineVersion=1.4.0 --no-configuration-cache`.
-The four existing modules compare against real 1.4.0 binaries. Bullet first publishes in 1.5.0,
-so its comparison explicitly skips older baselines; it is included once the baseline is 1.5.0 or newer.
+For 1.6.0, use `-PreleaseVersion=1.6.0 -PapiBaselineVersion=1.5.0 --no-configuration-cache`.
+All five modules compare against real published 1.5.0 binaries, including Bullet.

@@ -125,4 +125,4 @@ Gameplay 1.0 is a clean backend break. Replace the legacy `World` constructor in
 substeps and hit threshold through `Box2dWorldSpec`. Read
 `positionRenderUnits`/`velocityRenderUnitsPerSecond` from the expanded copied state. Applications
 must close the bridge before the application-owned world and include the official
-`gdx-box2d:3.1.1-0` desktop native. Runtime inspection requires `agent-runtime-box2d:3.0.0`.
+`gdx-box2d:3.1.1-0` desktop native. Runtime inspection requires `agent-runtime-box2d:3.2.0`.
