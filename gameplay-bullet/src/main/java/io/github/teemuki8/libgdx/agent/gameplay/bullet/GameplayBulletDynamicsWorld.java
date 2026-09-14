@@ -27,6 +27,8 @@ import io.github.teemuki8.libgdx.agent.gameplay.core.value.Vec3;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.TreeMap;
 
 /** Application-owned, owner-thread-confined Bullet rigid-body world with private native identities. */
@@ -35,6 +37,7 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
     private final BulletDynamicsLimits limits;
     private final Map<EntityId, Body> bodies = new TreeMap<>();
     private final Map<BulletConstraintId, Constraint> constraints = new TreeMap<>();
+    private final Set<BodyPair> ignoredCollisions = new HashSet<>();
     private final btDefaultCollisionConfiguration configuration;
     private final btCollisionDispatcher dispatcher;
     private final btBroadphaseInterface broadphase;
@@ -182,6 +185,25 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
         body.body().applyTorque(vector(Objects.requireNonNull(torqueNewtonMetres, "torqueNewtonMetres")));
     }
 
+    /** Changes one bounded body-pair collision exception without exposing either native body. */
+    public void setCollisionIgnored(EntityId firstId, EntityId secondId, boolean ignored) {
+        requireOpen();
+        Body first = requireBody(firstId);
+        Body second = requireBody(secondId);
+        if (firstId.equals(secondId)) {
+            throw new IllegalArgumentException("collision pair requires two distinct bodies");
+        }
+        BodyPair pair = BodyPair.of(firstId, secondId);
+        if (ignored && !ignoredCollisions.contains(pair)
+                && ignoredCollisions.size() >= limits.maxBodies() * 8L) {
+            throw new IllegalArgumentException("ignored collision-pair limit reached");
+        }
+        first.body().setIgnoreCollisionCheck(second.body(), ignored);
+        second.body().setIgnoreCollisionCheck(first.body(), ignored);
+        if (ignored) ignoredCollisions.add(pair);
+        else ignoredCollisions.remove(pair);
+    }
+
     /** Advances exactly one caller-owned fixed step in seconds. */
     public void step(double fixedStepSeconds) {
         requireOpen();
@@ -229,6 +251,16 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
         }
         Body body = bodies.remove(id);
         if (body != null) {
+            ignoredCollisions.removeIf(pair -> {
+                if (!pair.includes(id)) return false;
+                EntityId otherId = pair.other(id);
+                Body other = bodies.get(otherId);
+                if (other != null) {
+                    body.body().setIgnoreCollisionCheck(other.body(), false);
+                    other.body().setIgnoreCollisionCheck(body.body(), false);
+                }
+                return true;
+            });
             dispose(body);
         }
     }
@@ -311,6 +343,7 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
             value.nativeConstraint().dispose();
         });
         constraints.clear();
+        ignoredCollisions.clear();
         bodies.values().forEach(this::dispose);
         bodies.clear();
         world.dispose();
@@ -324,4 +357,12 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
     private record Body(btRigidBody body, btDefaultMotionState motion, btCollisionShape shape, double mass) { }
 
     private record Constraint(btGeneric6DofConstraint nativeConstraint, EntityId first, EntityId second) { }
+
+    private record BodyPair(EntityId first, EntityId second) {
+        private static BodyPair of(EntityId first, EntityId second) {
+            return first.compareTo(second) < 0 ? new BodyPair(first, second) : new BodyPair(second, first);
+        }
+        private boolean includes(EntityId id) { return first.equals(id) || second.equals(id); }
+        private EntityId other(EntityId id) { return first.equals(id) ? second : first; }
+    }
 }

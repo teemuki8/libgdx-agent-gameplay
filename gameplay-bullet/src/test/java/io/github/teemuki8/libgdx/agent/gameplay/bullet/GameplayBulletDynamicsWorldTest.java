@@ -118,6 +118,28 @@ final class GameplayBulletDynamicsWorldTest {
         }
     }
 
+    @Test void ignoredBodyPairMayOverlapAndCanBeRestoredWithoutNativeIdentityLeakage() {
+        EntityId first = EntityId.of("first");
+        EntityId second = EntityId.of("second");
+        try (var world = new GameplayBulletDynamicsWorld(new BulletDynamicsLimits(2, 0), Vec3.ZERO)) {
+            world.add(first, body(Vec3.ZERO, Vec3.ONE, 1));
+            world.add(second, body(Vec3.ZERO, Vec3.ONE, 1));
+            world.setCollisionIgnored(first, second, true);
+            for (int tick = 0; tick < 20; tick++) world.step(1d / 60);
+            assertTrue(distance(world.state(first).orElseThrow().position(),
+                    world.state(second).orElseThrow().position()) < .05,
+                    "An explicitly ignored self-collision pair must remain overlapped");
+
+            world.setCollisionIgnored(first, second, false);
+            world.applyCentralImpulse(first, new Vec3(.01, 0, 0));
+            for (int tick = 0; tick < 20; tick++) world.step(1d / 60);
+            assertTrue(distance(world.state(first).orElseThrow().position(),
+                    world.state(second).orElseThrow().position()) > .2,
+                    "Restoring collision must let Bullet resolve the overlap again");
+            assertThrows(IllegalArgumentException.class, () -> world.setCollisionIgnored(first, first, true));
+        }
+    }
+
     private static QuaternionValue hingeResponse(QuaternionValue anchorRotation) {
         try (var world = new GameplayBulletDynamicsWorld(new BulletDynamicsLimits(2, 1), Vec3.ZERO)) {
             world.add(FLOOR, body(Vec3.ZERO, new Vec3(1, 1, 1), 0));
