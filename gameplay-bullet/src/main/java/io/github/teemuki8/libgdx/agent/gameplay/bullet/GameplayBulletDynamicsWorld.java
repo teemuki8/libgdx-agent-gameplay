@@ -144,6 +144,7 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
             constraint.setAngularUpperLimit(vector(spec.angularUpperRadians()));
             world.addConstraint(constraint, spec.disableLinkedCollision());
             constraints.put(id, new Constraint(constraint, spec.first(), spec.second()));
+            if (spec.disableLinkedCollision()) clearCachedContacts(first.mass() > 0 ? first : second);
         } catch (RuntimeException | Error failure) {
             constraint.dispose();
             throw failure;
@@ -194,14 +195,23 @@ public final class GameplayBulletDynamicsWorld implements AutoCloseable {
             throw new IllegalArgumentException("collision pair requires two distinct bodies");
         }
         BodyPair pair = BodyPair.of(firstId, secondId);
-        if (ignored && !ignoredCollisions.contains(pair)
-                && ignoredCollisions.size() >= limits.maxBodies() * 8L) {
+        if (ignoredCollisions.contains(pair) == ignored) return;
+        if (ignored && ignoredCollisions.size() >= limits.maxBodies() * 8L) {
             throw new IllegalArgumentException("ignored collision-pair limit reached");
         }
         first.body().setIgnoreCollisionCheck(second.body(), ignored);
         second.body().setIgnoreCollisionCheck(first.body(), ignored);
         if (ignored) ignoredCollisions.add(pair);
         else ignoredCollisions.remove(pair);
+        clearCachedContacts(first.mass() > 0 ? first : second);
+        first.body().activate();
+        second.body().activate();
+    }
+
+    private void clearCachedContacts(Body body) {
+        // Use Bullet's proxy callback to clear real cached pairs. gdx-bullet 1.14.2's
+        // direct cleanOverlappingPair wrapper has an invalid native-reference typemap.
+        world.getPairCache().cleanProxyFromPairs(body.body().getBroadphaseHandle(), dispatcher);
     }
 
     /** Advances exactly one caller-owned fixed step in seconds. */
