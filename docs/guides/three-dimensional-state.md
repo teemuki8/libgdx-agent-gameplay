@@ -41,5 +41,26 @@ The standard runtime projection registry exposes `transform3d.position`, `transf
 `transform3d.scale`, `velocity3d.linear`, `aim3d.yawRadians`, `aim3d.pitchRadians`, and
 `aim3d.direction`. Vectors are typed objects with decimal `x/y/z` fields; rotations additionally have
 `w`. This preserves the published runtime API without adding an unqualified vector wire type.
+
+## Value math
+
+`Vec3` supplies component-wise `add`, `subtract`, `scale`, `dot`, `cross`, `length` and
+`normalized`; `scale` rejects non-finite factors and `normalized` maps the zero vector to itself.
+`QuaternionValue` supplies `rotate(Vec3)` (right-handed active rotation), `multiply(QuaternionValue)`
+(the Hamilton product; `this` applies after the argument) and `fromAxisAngle(axis, radians)` (the
+axis is normalized internally). These are the canonical implementations consumers should use
+instead of re-deriving the rotation and product formulas per application.
+
+## Derived transforms
+
+`AttachedTo(parent, local)` declares that the entity's world transform is composed each tick from
+the parent entity's resolved transform and the local pose (`parent.position + parent.rotation *
+local.position`, `parent.rotation * local.rotation`, `local.scale`). The world resolves every
+attachment after all systems and before the snapshot, bounded to eight chained passes; a missing
+parent freezes the child's last resolved pose and self-attachment is rejected with
+`INVALID_ATTACHMENT`. Writing an attached entity's transform directly is overwritten on the next
+tick. This is the Unity-style parent-child model for held items and equipment: the child rotates
+with the parent without any application-side composition code. Prefab support for the component
+is intentionally deferred until the closed prefab schema documents its parent-id resolution.
 Values come exclusively from completed authoritative snapshots and retain existing projection
 limits/frame correlation. Stage/Actor work remains render-thread confined in the application.

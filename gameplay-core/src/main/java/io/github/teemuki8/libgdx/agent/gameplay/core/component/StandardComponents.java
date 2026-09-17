@@ -15,6 +15,7 @@ public final class StandardComponents {
             .register(Sprite.TYPE)
             .register(Animation.TYPE)
             .register(Render.TYPE)
+            .register(AttachedTo.TYPE)
             .build();
 
     private StandardComponents() {
@@ -30,7 +31,7 @@ public final class StandardComponents {
                 Transform3D.TYPE, Velocity3D.TYPE, Aim3D.TYPE,
                 Transform2D.TYPE, Movement.TYPE, Health.TYPE, Faction.TYPE,
                 Lifetime.TYPE, Collider.TYPE, Sprite.TYPE, Animation.TYPE,
-                Render.TYPE).contains(type)) {
+                Render.TYPE, AttachedTo.TYPE).contains(type)) {
             throw io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException
                     .validation(
                             io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic

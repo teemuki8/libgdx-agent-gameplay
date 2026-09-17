@@ -16,7 +16,7 @@ final class BuildContractTest {
         String core = Files.readString(root.resolve("gameplay-core/build.gradle.kts"));
         assertTrue(versions.contains("gdx = \"1.14.2\""));
         assertTrue(versions.contains("gdx-box2d3 = \"3.1.1-0\""));
-        assertTrue(versions.contains("agent-runtime = \"3.0.0\""));
+        assertTrue(versions.contains("agent-runtime = \"3.2.0\""));
         assertTrue(versions.contains("harness = \"1.2.1\""));
         assertTrue(versions.contains("markup = \"0.5.0\""));
         assertTrue(versions.contains("jackson = \"2.22.1\""));

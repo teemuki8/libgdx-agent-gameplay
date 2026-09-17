@@ -4,6 +4,7 @@ package io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic;
 public enum GameplayDiagnosticCode {
     INVALID_IDENTIFIER,
     INVALID_COMPONENT_VALUE,
+    INVALID_ATTACHMENT,
     DUPLICATE_COMPONENT_TYPE,
     UNKNOWN_COMPONENT_TYPE,
     LIMIT_OUT_OF_RANGE,

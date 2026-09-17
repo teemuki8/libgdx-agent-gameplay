@@ -2,6 +2,7 @@ package io.github.teemuki8.libgdx.agent.gameplay.core.replay;
 
 import io.github.teemuki8.libgdx.agent.gameplay.core.GameplayLimits;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Animation;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.AttachedTo;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.AnimationClip;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Collider;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Component;
@@ -186,6 +187,14 @@ public final class CanonicalWorldEncoder {
             vector(writer, transform.scale());
         } else if (component instanceof Velocity3D velocity) {
             vector(writer, velocity.linear());
+        } else if (component instanceof AttachedTo attached) {
+            writer.text(attached.parent().value());
+            vector(writer, attached.local().position());
+            writer.decimal(attached.local().rotation().x());
+            writer.decimal(attached.local().rotation().y());
+            writer.decimal(attached.local().rotation().z());
+            writer.decimal(attached.local().rotation().w());
+            vector(writer, attached.local().scale());
         } else if (component instanceof Aim3D aim) {
             writer.decimal(aim.yawRadians());
             writer.decimal(aim.pitchRadians());

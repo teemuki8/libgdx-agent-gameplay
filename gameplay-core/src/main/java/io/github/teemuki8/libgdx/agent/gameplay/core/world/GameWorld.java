@@ -3,9 +3,11 @@ package io.github.teemuki8.libgdx.agent.gameplay.core.world;
 import io.github.teemuki8.libgdx.agent.gameplay.core.GameplayLimits;
 import io.github.teemuki8.libgdx.agent.gameplay.core.command.CommandBuffer;
 import io.github.teemuki8.libgdx.agent.gameplay.core.command.CommandEnvelope;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.AttachedTo;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.Component;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.ComponentRegistry;
 import io.github.teemuki8.libgdx.agent.gameplay.core.component.ComponentType;
+import io.github.teemuki8.libgdx.agent.gameplay.core.component.Transform3D;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayDiagnosticCode;
 import io.github.teemuki8.libgdx.agent.gameplay.core.diagnostic.GameplayException;
 import io.github.teemuki8.libgdx.agent.gameplay.core.event.EntityDespawned;
@@ -169,6 +171,7 @@ public final class GameWorld implements AutoCloseable {
                 }
             }
             disposePending();
+            resolveAttachments();
             List<EventEnvelope> completedEvents = eventBuffer.closeTick();
             WorldSnapshot completedSnapshot = snapshotInternal(tick);
             CompletedTick completed = new CompletedTick(
@@ -331,6 +334,55 @@ public final class GameWorld implements AutoCloseable {
                 .map(record -> record.view(EntityState.ACTIVE))
                 .filter(view -> view.hasAll(required))
                 .toList();
+    }
+
+    /** Maximum attachment chain length; deeper chains keep their last resolved pose. */
+    private static final int MAX_ATTACH_DEPTH = 8;
+
+    /** Derives every {@link AttachedTo} entity's transform from its parent's resolved
+     *  transform composed with the local pose. Runs after all systems so the derived
+     *  poses use the freshly written authoritative transforms, and before the snapshot
+     *  so observers read the composed world. A missing parent freezes the child's last
+     *  resolved pose; self-attachment is rejected. */
+    private void resolveAttachments() {
+        for (int pass = 0; pass < MAX_ATTACH_DEPTH; pass++) {
+            boolean changed = false;
+            for (EntityRecord record : active.values()) {
+                AttachedTo attachment = attachment(record);
+                if (attachment == null) continue;
+                if (attachment.parent().equals(record.id())) {
+                    throw failure(GameplayDiagnosticCode.INVALID_ATTACHMENT,
+                            "resolve-attachments", "a parent different from the entity",
+                            record.id().value(),
+                            "Attach an entity to a different parent entity.");
+                }
+                EntityRecord parent = active.get(attachment.parent());
+                if (parent == null) continue;
+                Transform3D parentPose = pose(parent);
+                if (parentPose == null) continue;
+                Transform3D derived = compose(parentPose, attachment.local());
+                if (!derived.equals(pose(record))) {
+                    record.replace(Transform3D.TYPE, derived);
+                    changed = true;
+                }
+            }
+            if (!changed) return;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static AttachedTo attachment(EntityRecord record) {
+        return (AttachedTo) record.components().get(AttachedTo.TYPE);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Transform3D pose(EntityRecord record) {
+        return (Transform3D) record.components().get(Transform3D.TYPE);
+    }
+
+    private static Transform3D compose(Transform3D parent, Transform3D local) {
+        return new Transform3D(parent.position().add(parent.rotation().rotate(local.position())),
+                parent.rotation().multiply(local.rotation()), local.scale());
     }
 
     private WorldSnapshot snapshotInternal(long snapshotTick) {
