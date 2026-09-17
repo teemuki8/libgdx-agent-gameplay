@@ -168,10 +168,14 @@ public final class GameWorld implements AutoCloseable {
                 runPhase(phase);
                 if (phase == SystemPhase.GAMEPLAY) {
                     logicallyDespawnPending();
+                } else if (phase == SystemPhase.ANIMATION) {
+                    // The last phase allowed to mutate authoritative components: the
+                    // derived attachment poses then stay fresh for the read-only
+                    // presentation, capture and snapshot phases.
+                    resolveAttachments();
                 }
             }
             disposePending();
-            resolveAttachments();
             List<EventEnvelope> completedEvents = eventBuffer.closeTick();
             WorldSnapshot completedSnapshot = snapshotInternal(tick);
             CompletedTick completed = new CompletedTick(
@@ -368,6 +372,10 @@ public final class GameWorld implements AutoCloseable {
             }
             if (!changed) return;
         }
+        throw failure(GameplayDiagnosticCode.INVALID_ATTACHMENT,
+                "resolve-attachments", "an acyclic chain no deeper than " + MAX_ATTACH_DEPTH,
+                "unresolved attachment chain",
+                "Break the attachment cycle or shorten the chain.");
     }
 
     @SuppressWarnings("unchecked")
