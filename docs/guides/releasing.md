@@ -16,6 +16,10 @@ For an authorized version `X.Y.Z`:
    binary, metadata, source, and IDEA-tooling addition.
 6. Only with explicit release authorization, create the exact semantic `vX.Y.Z` release. The
    staging workflow checks, signs, uploads, and transfers with `publishing_type=user_managed`.
+   The local equivalent is `./scripts/stage-central.sh`: it reads the protected credentials from
+   `~/.maven-central.env` (chmod 600, never committed), stages and signs the five modules,
+   transfers the upload, polls validation, verifies the exact coordinates, and asks for the
+   single final publish confirmation.
 7. Inspect the Central deployment. Publication requires a second deliberate `publish` operation
    whose validated PURLs exactly match all five coordinates. A failed candidate may be dropped only
    by the manual management workflow.
